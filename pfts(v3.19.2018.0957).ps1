@@ -1138,6 +1138,7 @@ $OriginatorDir = "/home/pfts/pull/coastguard"#required, directory path ex. "/hom
 $OriginatorZip = $null #If you would have the originator zip files prior to sending. Encouraged for thousands of 'small' files, specify $True, else, $False ex. "$True"
 $OriginatorZipQuantity = $null #Required if $OriginatorZip is true Specify quantity of files to zip, suggested size of 500 ex. "500"
 $OriginatorFiletype = $null#required this will collect only files of 'type' ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
+$LocalUnzip = $null#if true, will unzip inbound zips########################################NOT IMPLEMENTED###
 $OriginatorOS = "Linux"#specify Linux or Windows, option not implemented don't use
 $ConnectionSpeed = $null #how often should this script run in minutes ex. 5 #note, a time of 0 will never let the script end. #this does nothing right now
 ########################################################
