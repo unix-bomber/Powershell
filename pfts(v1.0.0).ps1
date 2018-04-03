@@ -1311,6 +1311,14 @@ Catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20 
     }
+    $toarchive = Get-ChildItem -Path "$Using:LoggingfolderPulling\$basename\*" -Exclude "$currentdate"
+    foreach ($archive in $toarchive.fullname) {
+        if ((Get-ChildItem -path $archive -Recurse) -contains "*.txt")
+            {
+            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
+            Remove-Item –path "$toarchive\*.txt" -Recurse
+            }
+    }
 }
 '@    
                         $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
@@ -1733,6 +1741,14 @@ if ($LocalPassthrough -eq "$True")
                 }
                 
         }
+    $toarchive = Get-ChildItem -Path "$Using:LoggingfolderPushing\$basename\*" -Exclude "$currentdate"
+    foreach ($archive in $toarchive.fullname) {
+        if ((Get-ChildItem -path $archive -Recurse) -contains "*.txt")
+            {
+            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
+            Remove-Item –path "$toarchive\*.txt" -Recurse
+            }
+    }
     }
 '@    
                         $PushChildScriptBlock | Set-Content -Path "$LocalConfFolderPushing\$Friendly.ps1"
