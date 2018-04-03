@@ -243,18 +243,18 @@ Param(
   [Switch]$Version              # Get this script version
 )
 
-$scriptVersion = "2017-12-10"
+$scriptVersion = "2018-3-22"
 
 # This script name, with various levels of details
 $argv0 = Get-Item $MyInvocation.MyCommand.Definition
-$script = "pfts"               # Ex: PSService
-$scriptName = "pfts.ps1"               # Ex: PSService.ps1
+$script = "Pfts"               # Ex: PSService
+$scriptName = "Pfts.ps1"               # Ex: PSService.ps1
 $scriptFullName = "C:\Temp\pfts.ps1"       # Ex: C:\Temp\PSService.ps1
 
 # Global settings
 $serviceName = $script                  # A one-word name used for net start commands
-$serviceDisplayName = "Powershell file transfer service"
-$ServiceDescription = "Moves files from a source to a destination via encrypted FTP or SCP"
+$serviceDisplayName = "Powershell File Transfer Service"
+$ServiceDescription = "A Windows, Powershell, and WinSCP dependent file transfer service"
 $pipeName = "Service_$serviceName"      # Named pipe name. Used for sending messages to the service task
 # $installDir = "${ENV:ProgramFiles}\$serviceName" # Where to install the service files
 $installDir = "${ENV:windir}\System32"  # Where to install the service files
@@ -1031,78 +1031,71 @@ if ($Control) {                 # Send a control message to the service
 if ($Service) {                 # Run the service
   Write-EventLog -LogName $logName -Source $serviceName -EventId 1005 -EntryType Information -Message "$scriptName -Service # Beginning background job"
   # Do the service background job
-################################################
-#FIRST TIME INSTALLATION
-#Before installing as a service 
-#
-#1.) set the friendly names (Find with ctrl+f LocalFriendly). If you have multiple data feeds from the same 
-#source that can't be differentiated label them 1,2,3,4 Example. "fbi1", "fbi2", "fbi3", "fbi4", "fbi5"
-#
-#As for destination, try to keep a naming convention like Example. cds_fbi, cds_coastguard, cds_nmec, cds_le,
-#
-#2.) ensure you have winscp, specify it's location under $Global:LocalFTPClient
-#
-#3.) if you wish to pass folders directly from C:\pfts\pulling\$Friendly\inbound to C:\pfts\pushing\$Friendly\outbound, name your friendly pulling the same as friendly pushing
-#
-################################################
+  try {
+  # Start the control pipe handler thread
+    $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage"
+######### TO DO: Implement your own service code here. ##########
+# Start pfts core logic
 $Cronos = "1"
-while ($Cronos=1)
+While ($Cronos = "1")
 {
-try {
+$timerName = "Core logic of pfts service"
 $Global:LocalFTPClient = "C:\Program Files (x86)\WinSCP"
 $Parentfolder = "C:\pfts"
 $Loggingfolder = "C:\pfts\log"
-$LoggingfolderPulling = "C:\pfts\log\pulling"
+$Global:LoggingfolderPulling = "C:\pfts\log\pulling"
 $LoggingfolderPushing = "C:\pfts\log\pushing"
 
-$LocalFriendlyPulling = "ice", "coastguard", "dhs", "faa"
+$LocalFriendlyPulling = "coastguard"
 $LocalParentFolderPulling = "C:\pfts\pulling"
 $Global:LocalChildFolderPulling = "$LocalParentFolderPulling\originators"
 $Global:LocalConfFolderPulling = "$LocalParentFolderPulling\conf"
 
-$LocalFriendlyPushing = "ice", "coastguard", "dhs", "faa"
+$LocalFriendlyPushing = "coastguard"
 $LocalParentFolderPushing = "C:\pfts\pushing"
-$Global:LocalChildFolderPushing =  "$LocalParentFolderPushing\destination"
-$GLobal:LocalConfFolderPushing = "$LocalParentFolderPushing\conf"
+$LocalChildFolderPushing =  "$LocalParentFolderPushing\destination"
+$LocalConfFolderPushing = "$LocalParentFolderPushing\conf"
 
 ################################################
 $Basename = $($MyInvocation.MyCommand.name)
 $Basename = $Basename -replace ".{4}$"
 
-if (!(Test-Path $ParentFolder))
-    {
-    mkdir $Parentfolder
-    mkdir $Loggingfolder
-    mkdir $LoggingfolderPulling
-    mkdir $LoggingfolderPushing
+try {
+    if (!(Test-Path $ParentFolder))
+        {
+        mkdir $Parentfolder
+        mkdir $Loggingfolder
+        mkdir $LoggingfolderPulling
+        mkdir $LoggingfolderPushing
 
-    mkdir $LocalParentFolderPulling
-    mkdir $LocalChildFolderPulling
-    mkdir $LocalConfFolderPulling
+        mkdir $LocalParentFolderPulling
+        mkdir $LocalChildFolderPulling
+        mkdir $LocalConfFolderPulling
 
-    mkdir $LocalParentFolderPushing
-    mkdir $LocalChildFolderPushing
-    mkdir $LocalConfFolderPushing
+        mkdir $LocalParentFolderPushing
+        mkdir $LocalChildFolderPushing
+        mkdir $LocalConfFolderPushing
+        }
     }
-}
 
 Catch
     {
-    Write-EventLog -LogName "Application" -Source "pfts" -EventID 0020 -EntryType Information -Message "Error: $Basename Can't find WinSCP installation. Use default installation path." -Category 1 -RawData 10,20
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 2000 -EntryType Information -Message "Info: Error: $basename problem creating folder structure: $($_.Exception.Message)" -Category 1 -RawData 10,20
+    Exit 1
+    }
+
+if (!(Test-Path $LocalFTPClient))
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 2001 -EntryType Information -Message "Error: $Basename Can't find WinSCP .dll Ensure dll is present under C:\Program Files (x86)\WinSCP\WinSCPnet.dll $($_.Exception.Message)" -Category 1 -RawData 10,20
     Exit 1
     }
 
 Try {
-if (!(Test-Path $LocalFTPClient))
-    {
-    Write-EventLog -LogName "Application" -Source "pfts" -EventID 0001 -EntryType Information -Message "Error: $Basename Can't find WinSCP installation. Use default installation path." -Category 1 -RawData 10,20
-    Exit 1
-    }
-
 if ($LocalFriendlyPulling.length -le "1")
         {
-        Write-EventLog -LogName "Application" -Source "pfts" -EventID 0002 -EntryType Information -Message "Info: No pulling datafeeds added" -Category 1 -RawData 10,20 
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 2002 -EntryType Information -Message "Info: No pulling datafeeds added" -Category 1 -RawData 10,20 
         }
+
             else
                 {
                 ForEach ($Friendly in $LocalFriendlyPulling) {
@@ -1113,7 +1106,6 @@ if ($LocalFriendlyPulling.length -le "1")
                         mkdir "$LocalChildFolderPulling\$Friendly\inbound"
                         mkdir "$LocalChildFolderPulling\$Friendly\working"
                         Start-Sleep -Milliseconds 500
-                        $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
 $PullChildScriptBlock = @'
 ##############################################################
 ##!!!!!REMOVE YOUR PLAINTEXT PASSWORDS AFTER FIRST RUN!!!!!!##
@@ -1124,7 +1116,7 @@ $PullChildScriptBlock = @'
 $OriginatorFTPType = "sftp"#required specify if you want to use scp sftp ftps Ex. "scp"
 $OriginatorUsername = "pfts"#required username of account used to connect to data source Ex. "username"
 $OriginatorAuth = "password"#required, valid values are "password", "sshkey" or "certificate" Ex. "password
-$OriginatorSecurepassword = $null#the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
+$OriginatorSecurepassword = "12qwaszx!@QWASZX"#the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
 $OriginatorSSHkey = $null#if using ssh keys, specify full path to key
 $OriginatorSecureSSHkeyPassword = $null#password of ssh key, if used
 $OriginatorFingerprint = "ssh-ed25519 256 hmk1czu5R0VTtjno/1fGeTMTQRaaMKg86nJZHsKnZpE="#required, you can obtain this using the winscp gui Ex. "ssh-rsa 2048 xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
@@ -1136,45 +1128,45 @@ $OriginatorDir = "/home/pfts/pull/coastguard"#required, directory path ex. "/hom
 ##Data formating options##
 ##########################
 $OriginatorZip = $null #If you would have the originator zip files prior to sending. Encouraged for thousands of 'small' files, specify $True, else, $False ex. "$True"
-$OriginatorZipQuantity = $null#Required if $OriginatorZip is true Specify quantity of files to zip, suggested size of 500 ex. "500"
-$OriginatorFiletype = $null#required this will collect only files of 'type' ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
-$OriginatorOS = "Linux"#specify Linux or Windows, option not implemented don't use
-$ConnectionSpeed = $null #how often should this script run in minutes ex. 5 #note, a time of 0 will never let the script end. #this does nothing right now
+$OriginatorZipQuantity = $null #Required if $OriginatorZip is true Specify quantity of files to zip, suggested size of 500 ex. "500"
+$OriginatorFiletype = "*.xml"#required this will collect only files of 'type' ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
+$OriginatorOS = "Linux"#Specify "Linux" for FTP variants. Specify "Windows" for SMB shares
 ########################################################
 ##Don't go past here unless you know what you're doing##
 ########################################################
+
 $BasenameArray = ($Args[0]).Split("\")
 $Basename = $BasenameArray[$BasenameArray.Length - 1]
 $Basename = $Basename -replace ".{4}$"
-#$Basename = "coastguard"
-$timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+$currentdate = Get-Date -Format yyyyMMdd
+$timestamp = (Get-Date -Format o) | foreach{$_ -replace ":", "."}
 $Tab = [char]9
 
 if ($OriginatorOS -eq "Linux")
 {   
 try {
-    if (!(test-path "$Using:LocalConfFolderPulling\winscppass$Basename.txt"))
+    if (!(test-path "$Using:LocalConfFolderPulling\pull_pass$Basename.txt"))
         {
         if ($OriginatorAuth -eq "password")
                 {
-                $OriginatorSecurepassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPulling\winscppass$Basename.txt"
-                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPulling\winscppass$Basename.txt" | ConvertTo-SecureString
+                $OriginatorSecurepassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPulling\pull_pass$Basename.txt"
+                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPulling\pull_pass$Basename.txt" | ConvertTo-SecureString
                 }
         }               
         else 
             {
             if ($OriginatorAuth -eq "password")
                 {
-                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPulling\winscppass$Basename.txt" | ConvertTo-SecureString
+                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPulling\pull_pass$Basename.txt" | ConvertTo-SecureString
                 }
             }
 
-    if (!(test-path "$Using:LocalConfFolderPulling\winscpsshpass$Basename.txt"))
+    if (!(test-path "$Using:LocalConfFolderPulling\pull_sshpass$Basename.txt"))
         {
         if ($OriginatorAuth -eq "sshkey")
             {
-            $OriginatorSecureSSHkeyPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPulling\winscpsshpass$Basename.txt"
-            $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPulling\winscpsshpass$Basename.txt" | ConvertTo-SecureString
+            $OriginatorSecureSSHkeyPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPulling\pull_sshpass$Basename.txt"
+            $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPulling\pull_sshpass$Basename.txt" | ConvertTo-SecureString
             }
         }
 
@@ -1182,13 +1174,13 @@ try {
             {
             if ($OriginatorAuth -eq "sshkey")
                 {
-                $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPulling\winscpsshpass$Basename.txt" | ConvertTo-SecureString
+                $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPulling\pull_sshpass$Basename.txt" | ConvertTo-SecureString
                 }
             }
     }
 catch
     {
-    Write-EventLog -LogName "Application" -Source "pfts" -EventID 0007 -EntryType Information -Message "Error: $basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3000 -EntryType Information -Message "Error: pushing_$basename credential failure: $($_.Exception.Message)" -Category 1 -RawData 10,20
     Exit 1
     }
     
@@ -1223,14 +1215,14 @@ try {
         Protocol = [WinSCP.Protocol]::$OriginatorFTPType
         HostName = $OriginatorIP
         UserName = $OriginatorUsername
-        TlsClientCertificatePath = $OriginatorSSHkey
-        TlsHostCertificateFingerprint = $OriginatorSecureSSHkeyPassword
+        TlsClientCertificatePath = $OriginatorTLSClientCert
+        TlsHostCertificateFingerprint = $Originatorfingerprint
                                                                       }                        
         }
     
-    if (!(test-path "$Using:LocalConfFolderPulling\winscppass$Basename.txt") -and (!(test-path "$Using:LocalConfFolderPulling\winscpsshpass$Basename.txt")) -and ($OriginatorTLSClientCert.length -lt "2" -or $OriginatorFiletype.length -eq "2" -or $OriginatorFiletype.length -eq "2"))
+    if (!(test-path "$Using:LocalConfFolderPulling\pull_pass$Basename.txt") -and (!(test-path "$Using:LocalConfFolderPulling\pull_sshpass$Basename.txt")) -and ($OriginatorTLSClientCert.length -le "2"))
         {
-        Write-EventLog -LogName "Application" -Source "pfts" -EventID 0004 -EntryType Information -Message "Error: $basename No credentials input, halting" -Category 1 -RawData 10,20
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 3001 -EntryType Information -Message "Error: pulling_$basename No credentials input, halting" -Category 1 -RawData 10,20
         exit 1
         }
         
@@ -1238,7 +1230,7 @@ try {
             
 catch
     {
-    Write-EventLog -LogName "Application" -Source "pfts" -EventID 0005 -EntryType Information -Message "Error: $basename Credential error $($_.Exception.Message)" -Category 1 -RawData 10,20
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3002 -EntryType Information -Message "Error: pulling_$basename Credential error $($_.Exception.Message)" -Category 1 -RawData 10,20
     exit 1
     }
 #################################
@@ -1247,178 +1239,594 @@ catch
 #################################
 ##Zip files with a filetype    ##
 #################################
+try {      
       if ($OriginatorZip -eq "$True")
         {
+        if (!(Test-Path -Path "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"))
+            {
+            if (!(Test-Path -Path "$Using:LoggingfolderPulling\$basename\$currentdate\"))
+                {
+                New-Item -Path "$Using:LoggingfolderPulling\$basename\$currentdate\" -ItemType directory
+                }
+            New-Item -Path "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt" -ItemType file
+        }
         $session = New-Object WinSCP.Session
+        $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
         $transferOptions = New-Object WinSCP.TransferOptions
-        $transferOptions.FileMask = ("<=15s")
+        $transferOptions.FileMask = "*>=15s"
         $session.Open($sessionOptions)
-        if ($OriginatorFiletype.length -ge "2")
-            {
-            $files = $session.EnumerateRemoteFiles($OriginatorDir, "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
-            $discoveredfilecount = ($files | Measure-Object).count
-            while ($discoveredfilecount -gt $OriginatorZipQuantity -or $discoveredfilecount -eq $OriginatorZipQuantity){
-                $ZipCommand = 'cd ' + "$OriginatorDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + "$OriginatorFiletype" + '"' + '| head -n ' + "$OriginatorZipQuantity); zip " + '$timestamp' + '.zip -m $files'
-                $session.ExecuteCommand($ZipCommand).Check()
-                $currentzip = $session.EnumerateRemoteFiles($OriginatorDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                foreach ($zip in $currentzip){
-                    $session.GetFiles(($zip), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                    $currentdate = Get-Date -Format yyyyMMdd
-                    if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
-                        {
-                        New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                        "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
-                        }
-                    "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                    $discoveredfilecount = ($discoveredfilecount - $OriginatorZipQuantity)
-                                             }
-                }
-            if (($discoveredfilecount -lt $OriginatorZipQuantity) -and ($discoveredfilecount -ne 0)) 
-                {
-                $ZipCommand = 'cd ' + "$OriginatorDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + "$OriginatorFiletype" + '"' + '| head -n ' + "$discoveredfilecount); zip " + '$timestamp' + '.zip -m $files'
-                $session.ExecuteCommand($ZipCommand).Check()
-                $currentzip = $session.EnumerateRemoteFiles($OriginatorDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                $session.GetFiles(($zip), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                $currentdate = Get-Date -Format yyyyMMdd
-                if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
+            $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
+            $discoveredfilecount = ($discoveredfiles | Measure-Object).count
+            $discoveredzips = $session.EnumerateRemoteFiles("$OriginatorDir", "*.zip", [WinSCP.EnumerationOptions]::None)
+            $discoveredzipcount = ($discoveredzips | Measure-Object).count
+            while (($discoveredfilecount -ge "1") -or ($discoveredzipcount -ge "1")){
+                if ($discoveredzipcount -lt "1" -and $OriginatorFiletype -ne "*.zip")
                     {
-                    New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                    "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
+                    $ZipCommand = 'cd ' + "$OriginatorDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ -cmin +2 -type f -name " + '"' + "$OriginatorFiletype" + '"' + ' -and -not -name "*.zip"' + ' | head -n ' + "$OriginatorZipQuantity); zip " + '$timestamp' + '.zip -m $files'
+                    $session.ExecuteCommand($ZipCommand).Check()
                     }
-                "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                }
+                    $session.GetFiles(("$OriginatorDir/*.zip"), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
+                    $discoveredzipcount = ($discoveredzips | Measure-Object).count
             }
-########################################
-##Zip files with no filetype specified##
-########################################
-            else
-                {
-                if ($OriginatorFiletype.length -le "2")
-                    {
-                    $filesall = $session.EnumerateRemoteFiles($OriginatorDir, "*", [WinSCP.EnumerationOptions]::None)
-                    $discoveredfilecount = ($filesall | Measure-Object).count
-                    while ($discoveredfilecount -gt $OriginatorZipQuantity -or $discoveredfilecount -eq $OriginatorZipQuantity){
-                        $ZipCommand = 'cd ' + "$OriginatorDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f ! -name " + '"' + ".zip" +'"' + ' | head -n ' + "$OriginatorZipQuantity); zip " + '$timestamp' + '.zip -m $files'
-                        $session.ExecuteCommand($ZipCommand).Check()
-                        $currentzip = $session.EnumerateRemoteFiles($OriginatorDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                        foreach ($zip in $currentzip){
-                            $session.GetFiles(($zip), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                            $currentdate = Get-Date -Format yyyyMMdd
-                            if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
-                                {
-                                New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                                "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
-                                }
-                            "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                            $discoveredfilecount = ($discoveredfilecount - $OriginatorZipQuantity)
-                                                     }
-                            }
-                            }
-                    if (($discoveredfilecount -lt $OriginatorZipQuantity) -and ($discoveredfilecount -ne 0)) 
-                        {
-                        $ZipCommand = 'cd ' + "$OriginatorDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + ".zip" +'"' + ' | head -n ' + "$discoveredfilecount); zip " + '$timestamp' + '.zip -m $files'
-                        $session.ExecuteCommand($ZipCommand).Check()
-                        $currentzip = $session.EnumerateRemoteFiles($OriginatorDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                        $session.GetFiles(($zip), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
-                            }
-                            "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                        }
-                    }
-                    $session.Dispose()
-                    exit 0
-                }
-#############################################
-##No files being zipped, filetype specified##
-#############################################
-    if ($OriginatorZip -ne $True)
+        $session.Dispose()
+        exit 0
+        }
+    }
+Catch
     {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3003 -EntryType Information -Message "Info: Error with pulling_$basename zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20 
+    }
+#########################
+##No files being zipped##
+#########################
+try {
+    if ($OriginatorZip -ne "$True")
+    {
+    if (!(Test-Path -Path "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"))
+        {
+        if (!(Test-Path -Path "$Using:LoggingfolderPulling\$basename\$currentdate\"))
+            {
+            New-Item -Path "$Using:LoggingfolderPulling\$basename\$currentdate\" -ItemType directory
+            }
+            New-Item -Path "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt" -ItemType file
+        }
     $session = New-Object WinSCP.Session
+    $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
     $transferOptions = New-Object WinSCP.TransferOptions
-    $transferOptions.FileMask = ("<=2n")
+    $transferOptions.FileMask = "*<=2n"
     $session.Open($sessionOptions)
-        if ($OriginatorFiletype.length -ge "2")
-            {
-            $filesall = $session.EnumerateRemoteFiles($OriginatorDir, "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
-            $discoveredfilecount = ($filesall | Measure-Object).count
-            while ($discoveredfilecount -gt "1"){
-                foreach ($file in $filesall){
-                    $session.GetFiles(($file.FullName), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                    $currentdate = Get-Date -Format yyyyMMdd
-                    if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
-                        {
-                        New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                        "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
-                        }
-                    "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                    $discoveredfilecount = ($discoveredfilecount - "1")
-                                         }
-            }
-            }
-################################################
-##No files being zipped, no filetype specified##
-################################################ 
-            else
-            {
-                $filesall = $session.EnumerateRemoteFiles($OriginatorDir, "*", [WinSCP.EnumerationOptions]::None)
-                $discoveredfilecount = ($filesall | Measure-Object).count
-                while ($discoveredfilecount -gt "1"){
-                    foreach ($file in $filesall){
-                        $session.GetFiles(($file.FullName), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPulling\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -Append
-                            }
-                        "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $OriginatorIP + $Tab + $OriginatorDir + $Tab + $OriginatorFTPType + $Tab + $OriginatorFiletype | Out-File -FilePath "$Using:LoggingfolderPulling\$Basename\$currentdate.txt" -Append
-                        $discoveredfilecount = ($discoveredfilecount - "1")
-                                                }
-                }
-            }
-                $session.Dispose()
-                exit 0
+            
+        $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
+        $discoveredfilecount = ($discoveredfiles | Measure-Object).count
+        while ($discoveredfilecount -ge "1") {
+                    $session.GetFiles(("$OriginatorDir/$OriginatorFiletype"), ("$Using:LocalChildFolderPulling\$Basename\inbound\"),$True ,$transferOptions).Check()
+                    $discoveredfilecount = ($discoveredfiles | Measure-Object).count
+        }
+        $session.Dispose()
+        exit 0
+    }
+}
+
+Catch
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20 
     }
 }
 '@    
+                        $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
                         }
                     }
                 }
 }
 Catch 
 {
-Write-EventLog -LogName "Application" -Source "pfts" -EventID 0021 -EntryType Information -Message "Info: Error: $basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
+Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pulling_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
 }
+################################
+##End of pulling feed creation##
+################################
+
+##################################
+##Start of pushing feed creation##
+##################################
+
+Try {
+if ($LocalFriendlyPushing.length -le "1")
+        {
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 2002 -EntryType Information -Message "Info: No pushing datafeeds added" -Category 1 -RawData 10,20 
+        }
+            else
+                {
+                ForEach ($Friendly in $LocalFriendlyPushing) {
+                    if (!(Test-path -Path $LocalChildFolderPushing\$Friendly))
+                        {
+                        mkdir "$LocalChildFolderPushing\$Friendly"
+                        mkdir "$LoggingfolderPushing\$Friendly"
+                        mkdir "$LocalChildFolderPushing\$Friendly\outbound"
+                        mkdir "$LocalChildFolderPushing\$Friendly\working"
+                        Start-Sleep -Milliseconds 500
+$PushChildScriptBlock = @'
+##############################################################
+##!!!!!REMOVE YOUR PLAINTEXT PASSWORDS AFTER FIRST RUN!!!!!!##
+##############################################################
+######################
+##Connection options##
+######################
+$DestinationFTPType = "sftp"#required specify if you want to use scp sftp ftps Ex. "scp"
+$DestinationUsername = "pfts"#required username of account used to connect to data source Ex. "username"
+$DestinationAuth = "password"#required, valid values are "password", "sshkey" or "certificate" Ex. "password
+$DestinationSecurepassword = "12qwaszx!@QWASZX"#the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
+$DestinationSSHkey = $null#if using ssh keys, specify full path to key
+$DestinationSecureSSHkeyPassword = $null#password of ssh key, if used
+$DestinationFingerprint = "ssh-ed25519 256 hmk1czu5R0VTtjno/1fGeTMTQRaaMKg86nJZHsKnZpE="#required, you can obtain this using the winscp gui Ex. "ssh-rsa 2048 xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+$DestinationClientCert = $null#if using FTPS, and required you may specify a certificate here
+$DestinationTLSClientCert = $null#required if using certs full path to client certificate path
+$DestinationIP = "192.168.7.6"#required, ip address or hostname of data source
+$DestinationDir = "/home/pfts/push/coastguard"#required, directory path ex. "/home/pfts/push/coastguard"
+##########################
+##Data formating options##
+##########################
+$LocalZip = $null#zips files prior to sending. Encouraged for thousands of 'small' files, specify $True to use, else, $null ex. "$True"
+$LocalZipQuantity = $null#required if $LocalZip is true. Specify quantity of files to zip, suggested size of 500 ex. "500"
+$LocalUnzip = $null#this option unzips files prior to sending to the distant end, specify $True to use.
+$LocalFiletype = "*.xml"#required this will collect only files by file extension ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
+$LocalPassthrough = $True#this option allows one to pass files from the 'pulling' folder directly to the corresponding pushing folder. the only setup required is to name the friendly pushing the same as the friendly pulling, and to specify this value $True
+$DestinationOS = "Linux"#specify Linux or Windows, option not implemented don't use
+########################################################
+##Don't go past here unless you know what you're doing##
+########################################################
+$BasenameArray = ($Args[0]).Split("\")
+$Basename = $BasenameArray[$BasenameArray.Length - 1]
+$Basename = $Basename -replace ".{4}$"
+$currentdate = Get-Date -Format yyyyMMdd
+$timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+$Tab = [char]9
+
+if ($DestinationOS -eq "Linux")
+{   
+try {
+    if (!(test-path "$Using:LocalConfFolderPushing\push_pass$Basename.txt"))
+        {
+        if ($DestinationAuth -eq "password")
+                {
+                $DestinationSecurepassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPushing\push_pass$Basename.txt"
+                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPushing\push_pass$Basename.txt" | ConvertTo-SecureString
+                }
+        }               
+        else 
+            {
+            if ($DestinationAuth -eq "password")
+                {
+                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPushing\push_pass$Basename.txt" | ConvertTo-SecureString
+                }
+            }
+
+    if (!(test-path "$Using:LocalConfFolderPushing\pull_sshpass$Basename.txt"))
+        {
+        if ($DestinationAuth -eq "sshkey")
+            {
+            $DestinationSecureSSHkeyPassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$Using:LocalConfFolderPushing\push_sshpass$Basename.txt"
+            $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPushing\push_sshpass$Basename.txt" | ConvertTo-SecureString
+            }
+        }
+
+        else
+            {
+            if ($DestinationAuth -eq "sshkey")
+                {
+                $DecryptedSSHkeyPassword = Get-Content "$Using:LocalConfFolderPushing\push_sshpass$Basename.txt" | ConvertTo-SecureString
+                }
+            }
+    }
+catch
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 4000 -EntryType Information -Message "Error: pushing_$basename credential failure $($_.Exception.Message)" -Category 1 -RawData 10,20
+    Exit 1
+    }
+    
+try {
+    # Load WinSCP .NET assembly
+    Add-Type -Path "$Using:LocalFTPClient\WinSCPnet.dll"
+
+    if ($DestinationAuth -eq "password")
+        {
+        $sessionOptions = New-Object WinSCP.SessionOptions -Property @{
+        Protocol = [WinSCP.Protocol]::$DestinationFTPType
+        HostName = $DestinationIP
+        UserName = $DestinationUsername
+        SecurePassword = $DecryptedSecurepassword
+        SshHostKeyFingerprint = $Destinationfingerprint
+                                                                      }
+        }
+    if ($DestinationAuth -eq "sshkey")
+        {
+        $sessionOptions = New-Object WinSCP.SessionOptions -Property @{
+        Protocol = [WinSCP.Protocol]::$DestinationFTPType
+        HostName = $DestinationIP
+        UserName = $DestinationUsername
+        SshPrivateKeyPath = $DestinationSSHkey
+        SecurePrivateKeyPassphrase = $DestinationSecureSSHkeyPassword
+        SshHostKeyFingerprint = $Destinationfingerprint
+                                                                      }
+        }
+    if ($DestinationAuth -eq "certificate")
+        {
+        $sessionOptions = New-Object WinSCP.SessionOptions -Property @{
+        Protocol = [WinSCP.Protocol]::$DestinationFTPType
+        HostName = $DestinationIP
+        UserName = $DestinationUsername
+        TlsClientCertificatePath = $OriginatorTLSClientCert
+        TlsHostCertificateFingerprint = $Originatorfingerprint
+                                                                      }                        
+        }
+    
+    if (!(test-path "$Using:LocalConfFolderPushing\push_pass$Basename.txt") -and (!(test-path "$Using:LocalConfFolderPushing\pull_sshpass$Basename.txt")) -and ($DestinationTLSClientCert.length -le "2"))
+        {
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 4001 -EntryType Information -Message "Error: pushing_$basename No credentials input, halting" -Category 1 -RawData 10,20
+        exit 1
+        }
+        
+}
+            
+catch
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 4002 -EntryType Information -Message "Error: pushing_$basename Credential error $($_.Exception.Message)" -Category 1 -RawData 10,20
+    exit 1
+    }
+
+if ($LocalZip -and $LocalUnzip -eq "$True")
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 4003 -EntryType Information -Message "Error: pushing_$basename You can either zip, or unzip files. You can't do both. Change either $LocalZip or $LocalUnzip" -Category 1 -RawData 10,20
+    exit 1
+    }
+
+#################################
+##End of connection being built##
+#################################
+#####################
+##Passthrough files##
+#####################
+
+Add-Type -assembly "system.io.compression.filesystem"
+
+if ($LocalPassthrough -eq "$True")
+    {
+    if (Test-Path (!("$Using:LocalChildFolderPulling\$Basename\inbound")))
+        {
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 4004 -EntryType Information -Message "Error: $basename Can't passthrough, there's no folder named $Using:LocalChildFolderPulling\$Basename\inbound" -Category 1 -RawData 10,20
+        exit 1
+        }
+            if ($LocalZip -eq $True)
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }    
+                $session = New-Object WinSCP.Session
+                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                $transferOptions = New-Object WinSCP.TransferOptions
+                $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                $session.Open($sessionOptions)
+                $suffix = "_part"
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                    while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | select -Last $LocalZipQuantity
+                                $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPulling\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                                Remove-Item –path "$Using:LocalChildFolderPulling\$Basename\working\*" -Recurse
+                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
+                                $transferresult.check()
+                                }
+                    $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                    $session.ExecuteCommand($unpartcmdfull).Check()
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                    }
+                $session.Dispose()
+                exit 0
+                }
+            
+            if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }    
+                    $session = New-Object WinSCP.Session
+                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                    $transferOptions = New-Object WinSCP.TransferOptions
+                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    $session.Open($sessionOptions)
+                    $suffix = "_part"
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPulling\$Basename\inbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
+                                $transferresult.check()
+                                }
+                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                        $session.ExecuteCommand($unpartcmdfull).Check()
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        }
+                    $session.Dispose()
+                    exit 0
+                 }
+            
+            if ($LocalUnzip -eq $True)
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }
+                    $session = New-Object WinSCP.Session
+                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                    $transferOptions = New-Object WinSCP.TransferOptions
+                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    $session.Open($sessionOptions)
+                    $suffix = "_part"
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip"
+                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                foreach ($m in $move.fullname){
+                                    [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound")
+                                    Remove-Item -Path $m
+                                    $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
+                                    $transferresult.check()
+                                    }
+                                }
+                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                        $session.ExecuteCommand($unpartcmdfull).Check()
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        }
+                    $session.Dispose()
+                    exit 0
+                }
+                
+    }
+    
+    if ($LocalPassthrough -ne "$True")
+        {
+            if ($LocalZip -eq $True)
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }
+                $session = New-Object WinSCP.Session
+                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                $transferOptions = New-Object WinSCP.TransferOptions
+                $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                $session.Open($sessionOptions)
+                $suffix = "_part"
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Measure-Object).count
+                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                    while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | select -Last $LocalZipQuantity
+                                $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
+                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPushing\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                                Remove-Item –path "$Using:LocalChildFolderPushing\$Basename\working\*" -Recurse
+                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
+                                $transferresult.check()
+                                }
+                    $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                    $session.ExecuteCommand($unpartcmdfull).Check()
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                    }
+                $session.Dispose()
+                exit 0
+                }
+            
+            if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }    
+                    $session = New-Object WinSCP.Session
+                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                    $transferOptions = New-Object WinSCP.TransferOptions
+                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    $session.Open($sessionOptions)
+                    $suffix = "_part"
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
+                                $transferresult.check()
+                                }
+                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                        $session.ExecuteCommand($unpartcmdfull).Check()
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        }
+                    $session.Dispose()
+                    exit 0
+                 }
+            
+            if ($LocalUnzip -eq $True)
+                {
+                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                        {
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        }
+                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                    }
+                    $session = New-Object WinSCP.Session
+                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                    $transferOptions = New-Object WinSCP.TransferOptions
+                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    $session.Open($sessionOptions)
+                    $suffix = "_part"
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
+                            if ($currentbatchtotal -ge "1")
+                                {
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                foreach ($m in $move.fullname){
+                                    [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound")
+                                    Remove-Item -Path $m
+                                    $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
+                                    $transferresult.check()
+                                    }
+                                }
+                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                        $session.ExecuteCommand($unpartcmdfull).Check()
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
+                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
+                        }
+                    $session.Dispose()
+                    exit 0
+                }
+                
+        }
+    }
+'@    
+                        $PushChildScriptBlock | Set-Content -Path "$LocalConfFolderPushing\$Friendly.ps1"
+                        }
+                    }
+                }
+}
+Catch
+{
+Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
+}
+##################################
+##End of pushing feed creation##
+##################################
 
 #########################
 ##Loop that starts jobs##
 #########################
+try {
 $ActivePulling = Get-ChildItem -name "$LocalConfFolderPulling\*.ps1"
 $ActivePushing = Get-ChildItem -name "$LocalConfFolderPushing\*.ps1"
 $ActivePulling = $ActivePulling -replace ".{4}$"
 $ActivePushing = $ActivePushing -replace ".{4}$"
 
-try {
 $ActivePulling | ForEach-Object {
-        if ((Receive-Job -name "pulling$_").state -ne "Running")
-                {
-                $PassToJob = "$LocalConfFolderPulling\$_.ps1"
-                Start-Job -name "pulling$_" -FilePath "$LocalConfFolderPulling\$_.ps1" -ArgumentList $PassToJob
-                start-sleep -Seconds 1
-                }
-                                }
-    }
-    Catch
-    {
-    Write-EventLog -LogName "Application" -Source "pfts" -EventID 1000 -EntryType Information -Message "Info: Error: $basename, job loop broken $($_.Exception.Message)" -Category 1 -RawData 10,20
-    Exit 1
-    }
-Start-Sleep -seconds 30
+    if ((Receive-Job -name "pulling_$_" -keep).state -ne "Running")
+        {
+        Stop-Job -name "pulling_$_"
+        $PassToJob = "$LocalConfFolderPulling\$_.ps1"
+        Start-Job -name "pulling_$_" -FilePath "$LocalConfFolderPulling\$_.ps1" -ArgumentList $PassToJob
+        start-sleep -Seconds 1
+        }
 }
+
+$ActivePushing | ForEach-Object {
+    if ((Receive-Job -name "pushing_$_" -keep).state -ne "Running")
+        {
+        Stop-Job -name "pushing_$_"
+        $PassToJob = "$LocalConfFolderPushing\$_.ps1"
+        Start-Job -name "pushing_$_" -FilePath "$LocalConfFolderPushing\$_.ps1" -ArgumentList $PassToJob
+        start-sleep -Seconds 1
+        }
+}
+}
+Catch
+{
+Write-EventLog -LogName "Application" -Source "pfts" -EventID 2004 -EntryType Information -Message "Info: Error: With $basename, job handler: $($_.Exception.Message)" -Category 1 -RawData 10,20
+Exit 1
+}
+Start-Sleep -Seconds 5
+}
+    # Now enter the main service event loop
+    do { # Keep running until told to exit by the -Stop handler
+      $event = Wait-Event # Wait for the next incoming event
+      $source = $event.SourceIdentifier
+      $message = $event.MessageData
+      $eventTime = $event.TimeGenerated.TimeofDay
+      Write-Debug "Event at $eventTime from ${source}: $message"
+      $event | Remove-Event # Flush the event from the queue
+      switch ($message) {
+        "ControlMessage" { # Required. Message received by the control pipe thread
+          $state = $event.SourceEventArgs.InvocationStateInfo.state
+          Write-Debug "$script -Service # Thread $source state changed to $state"
+          switch ($state) {
+            "Completed" {
+              $message = Receive-PipeHandlerThread $pipeThread
+              Log "$scriptName -Service # Received control message: $Message"
+              if ($message -ne "exit") { # Start another thread waiting for control messages
+                $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage"
+              }
+            }
+            "Failed" {
+              $error = Receive-PipeHandlerThread $pipeThread
+              Log "$scriptName -Service # $source thread failed: $error"
+              Start-Sleep 1 # Avoid getting too many errors
+              $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage" # Retry
+            }
+          }
+        }
+        "TimerTick" { # Example. Periodic event generated for this example
+          Log "$scriptName -Service # pfts core logic is healthy"
+        }
+        default { # Should not happen
+          Log "$scriptName -Service # Unexpected event from ${source}: $Message"
+        }
+      }
+    } while ($message -ne "exit")
+  } catch { # An exception occurred while runnning the service
+    $msg = $_.Exception.Message
+    $line = $_.InvocationInfo.ScriptLineNumber
+    Log "$scriptName -Service # Error at line ${line}: $msg"
+  } finally { # Invoked in all cases: Exception or normally by -Stop
+    # Cleanup the periodic timer used in the above example
+    Unregister-Event -SourceIdentifier $timerName
     ############### End of the service code example. ################
     # Terminate the control pipe handler thread
     Get-PSThread | Remove-PSThread # Remove all remaining threads
@@ -1427,5 +1835,20 @@ Start-Sleep -seconds 30
     # Log a termination event, no matter what the cause is.
     Write-EventLog -LogName $logName -Source $serviceName -EventId 1006 -EntryType Information -Message "$script -Service # Exiting"
     Log "$scriptName -Service # Exiting"
+  }
   return
 }
+
+#                                     You keeping us on course,
+#                                       Little buddy?           \
+#
+#      Yes, Skipper \                       __________________________
+#                   H                      |   ____     _____
+#     ___           O                      |  |____|   |_____|
+#    |\_ --------__,+-_____________________|____________________-------
+#    \  `===#==__|__/\____|_____|_______|_______|_______|_____-------
+#     \
+#      |   ss. pueo
+#       \
+#    ~~~~-\_ /~~=._         ~~~~~~~~~~~             ~~~~~~~~~~~~~
+#~~~~      =/       ~~~~~~~~ ~~~~~~    ~~~~~~~~~~~~~             ~~~~~
