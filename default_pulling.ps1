@@ -31,7 +31,7 @@ $ConnectionSpeed = $null #how often should this script run in minutes ex. 5 #not
 $BasenameArray = ($Args[0]).Split("\")
 $Basename = $BasenameArray[$BasenameArray.Length - 1]
 $Basename = $Basename -replace ".{4}$"
-$timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+function get-formattedtime {$timestamp = (Get-Date -Format o) | foreach{$_ -replace ":", "."}}
 $Tab = [char]9
 
 if ($DestinationOS -eq "Linux")
@@ -135,9 +135,9 @@ if ($LocalZip -and $LocalUnzip -eq "$True")
 #################################
 ##End of connection being built##
 #################################
-#########################################
-##Passthrough and Zip, with a filetype ##
-#########################################
+#######################
+##Passthrough and Zip##
+#######################
 
 Add-Type -assembly "system.io.compression.filesystem"
 
@@ -150,351 +150,298 @@ Add-Type -assembly "system.io.compression.filesystem"
                 }
             if ($LocalZip -eq $True)
                 {
-                if ($LocalFiletype.length -ge "2")
-                    {
-                    $session = New-Object WinSCP.Session
-                    $session.Open($sessionOptions)
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
-                    while ($currentbatchtotal -ge $LocalZipQuantity){
-                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $LocalZipQuantity)
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                $session = New-Object WinSCP.Session
+                $session.Open($sessionOptions)
+                get-formattedtime
+
+                $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
+                while ($currentbatchtotal -ge $LocalZipQuantity){
+                    Get-formattedtime
+                    $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $LocalZipQuantity)
+                    $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                    $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                    [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                    $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                    
+                    foreach ($zip in $SendingZips)
                             {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
-                    }   
-                        if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
-                        {
-                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $currentbatchtotal
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                        }
-
-                    }
-#########################################
-##Passthrough and Zip, with no filetype##
-#########################################
-                if ($LocalFiletype.length -lt "2")
-                    {
-                    $session = New-Object WinSCP.Session
-                    $session.Open($sessionOptions)
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    while ($currentbatchtotal -ge $LocalZipQuantity){
-                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | select-object -last $LocalZipQuantity)
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
-                    }   
-                        if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
-                        {
-                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | select-object -last $currentbatchtotal
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                        "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        }
-                    }
-                }
-############################################
-##Passthrough, No zipping, Files specified##
-############################################
-                Else
-                    {
-                    if ($LocalFiletype.length -ge "2")
-                    {
-                    $session = New-Object WinSCP.Session
-                    $session.Open($sessionOptions)
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
-                    while ($currentbatchtotal -ge "1"){
-                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $LocalZipQuantity)
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
-                    }   
-                        if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
-                        {
-                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $currentbatchtotal
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                        }
-
-                    }
-###############################################
-##Passthrough, No zipping, No Files specified##
-###############################################
-                if ($LocalFiletype.length -lt "2")
-                    {
-                    $session = New-Object WinSCP.Session
-                    $session.Open($sessionOptions)
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    while ($currentbatchtotal -ge $LocalZipQuantity){
-                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | select-object -last $LocalZipQuantity)
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
-                    }   
-                        if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
-                        {
-                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | select-object -last $currentbatchtotal
-                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
-                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working")
-                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
-                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
-                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
-                        $currentdate = Get-Date -Format yyyyMMdd
-                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                            {
-                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
-                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                            }
-                        "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        }
-                    }
-                }
-############################################
-##Passthrough, un zipping, Files specified##
-############################################
-                if ($LocalUnzip -eq $True
-
-
-
-
-
-
-
-
-        }
-        
-        Else
-        {
-        Use files from "$Using:LocalChildFolderPushing\$Basename"
-            if ($Zip)
-                {
-                if ($filetype)
-                    {
-                    Logic
-                    }
-                else #nofiletype
-                    {
-                    Logic
-                    }
-                }
-            else #no zip
-                {
-                if ($filetype)
-                    {
-                    Logic
-                    }
-                else #nofiletype
-                    {
-                    Logic
-                    }
-                }
-        }
-
-        Add-Type -assembly "system.io.compression.filesystem"
-                    [System.IO.Compression.ZipFile]::ExtractToDirectory($zipfile, $destination)
-        #unzips files ^^^
-
-
-
-
-        $session = New-Object WinSCP.Session
-        $transferOptions = New-Object WinSCP.TransferOptions
-        $transferOptions.FileMask = ("<=15s")
-        $session.Open($sessionOptions)
-        if ($DestinationFiletype.length -gt "2" -or $DestinationFiletype.length -eq "2")
-            {
-            $files = $session.EnumerateRemoteFiles($DestinationDir, "$DestinationFiletype", [WinSCP.EnumerationOptions]::None)
-            $discoveredfilecount = ($files | Measure-Object).count
-            while ($discoveredfilecount -gt $DestinationZipQuantity -or $discoveredfilecount -eq $DestinationZipQuantity){
-                $ZipCommand = 'cd ' + "$DestinationDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + "$DestinationFiletype" + '"' + '| head -n ' + "$DestinationZipQuantity); zip " + '$timestamp' + '.zip -m $files'
-                $session.ExecuteCommand($ZipCommand).Check()
-                $currentzip = $session.EnumerateRemoteFiles($DestinationDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                foreach ($zip in $currentzip){
-                    $session.GetFiles(($zip), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
-                    $currentdate = Get-Date -Format yyyyMMdd
-                    if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                        {
-                        New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
-                        "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                        }
-                    "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                    $discoveredfilecount = ($discoveredfilecount - $DestinationZipQuantity)
-                                             }
-                }
-            if (($discoveredfilecount -le $DestinationZipQuantity) -and ($discoveredfilecount -ne 0)) 
-                {
-                $ZipCommand = 'cd ' + "$DestinationDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + "$DestinationFiletype" + '"' + '| head -n ' + "$discoveredfilecount); zip " + '$timestamp' + '.zip -m $files'
-                $session.ExecuteCommand($ZipCommand).Check()
-                $currentzip = $session.EnumerateRemoteFiles($DestinationDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                $session.GetFiles(($zip), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
-                $currentdate = Get-Date -Format yyyyMMdd
-                if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
-                    {
-                    New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
-                    "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
-                    }
-                "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                }
-            }
-########################################
-##Zip files with no filetype specified##
-########################################
-            else
-                {
-                if ($DestinationFiletype.length -lt "2" -or $DestinationFiletype.length -eq "2")
-                    {
-                    $filesall = $session.EnumerateRemoteFiles($DestinationDir, "*", [WinSCP.EnumerationOptions]::None)
-                    $discoveredfilecount = ($filesall | Measure-Object).count
-                    while ($discoveredfilecount -gt $DestinationZipQuantity -or $discoveredfilecount -eq $DestinationZipQuantity){
-                        $ZipCommand = 'cd ' + "$DestinationDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f ! -name " + '"' + ".zip" +'"' + ' | head -n ' + "$DestinationZipQuantity); zip " + '$timestamp' + '.zip -m $files'
-                        $session.ExecuteCommand($ZipCommand).Check()
-                        $currentzip = $session.EnumerateRemoteFiles($DestinationDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                        foreach ($zip in $currentzip){
-                            $session.GetFiles(($zip), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
+                            get-formattedtime
+                            $session.PutFiles(($zip), ("$DestinationDir"),$True).Check()
                             $currentdate = Get-Date -Format yyyyMMdd
                             if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
                                 {
-                                New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
+                                New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
                                 "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
                                 }
-                            "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                            $discoveredfilecount = ($discoveredfilecount - $DestinationZipQuantity)
-                                                     }
+                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                            $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
                             }
-                            }
-                    if (($discoveredfilecount -le $DestinationZipQuantity) -and ($discoveredfilecount -ne 0 -or $discoveredfilecount -le 0)) 
+               }
+                    if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
                         {
-                        $ZipCommand = 'cd ' + "$DestinationDir; timestamp=" + '$(' + 'date --utc +%FT%TZ); files=$(' + "find ./ +cmin 2 -type f -name " + '"' + ".zip" +'"' + ' | head -n ' + "$discoveredfilecount); zip " + '$timestamp' + '.zip -m $files'
-                        $session.ExecuteCommand($ZipCommand).Check()
-                        $currentzip = $session.EnumerateRemoteFiles($DestinationDir, "*.zip", [WinSCP.EnumerationOptions]::None)
-                        $session.GetFiles(($zip), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
+                        get-formattedtime
+                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $currentbatchtotal
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                        $session.PutFiles(($SendingZips), ("$DestinationDir"),$True).Check()
                         $currentdate = Get-Date -Format yyyyMMdd
                         if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
                             {
-                            New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
+                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
                             "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
                             }
-                            "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
                         }
+                        }
+###########################
+##Passthrough, No zipping##
+###########################
+                Else
+                    {
+                    $session = New-Object WinSCP.Session
+                    $session.Open($sessionOptions)
+
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
+                    while ($currentbatchtotal -ge "1"){
+                        get-formattedtime
+                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype") | select -first 1
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\outbound"
+                        $Sending = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"
+                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir"),$True).Check()
+                        $currentdate = Get-Date -Format yyyyMMdd
+                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                            {
+                            get-formattedtime
+                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                            }
+                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                        $currentbatchtotal = ($currentbatchtotal - "1")
                     }
-                    $session.Dispose()
-                    exit 0
-                }
-#############################################
-##No files being zipped, filetype specified##
-#############################################
-    if ($DestinationZip -ne $True)
-    {
-    $session = New-Object WinSCP.Session
-    $transferOptions = New-Object WinSCP.TransferOptions
-    $transferOptions.FileMask = ("<=2n")
-    $session.Open($sessionOptions)
-        if ($DestinationFiletype.length -gt "2" -or $DestinationFiletype.length -eq "2")
-            {
-            $filesall = $session.EnumerateRemoteFiles($DestinationDir, "$DestinationFiletype", [WinSCP.EnumerationOptions]::None)
-            $discoveredfilecount = ($filesall | Measure-Object).count
-            while ($discoveredfilecount -gt "1"){
-                foreach ($file in $filesall){
-                    $session.GetFiles(($file.FullName), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
-                    $currentdate = Get-Date -Format yyyyMMdd
-                    if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                    }
+###########################
+##Passthrough, un zipping##
+###########################
+                if ($LocalUnzip -eq $True)
+                    {
+                    get-formattedtime
+                    $session = New-Object WinSCP.Session
+                    $session.Open($sessionOptions)
+                
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "*.zip" | Measure-Object).count
+                    while ($currentbatchtotal -gt "1"){
+                        get-formattedtime
+                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "*.zip") | select -first 1
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                        [io.compression.zipfile]::ExtractToDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\") 
+                        $SendingFiles = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -Include "$LocalFiletype" -Exclude "*.zip"
+                        foreach ($file in $SendingFiles)
+                            {
+                            get-formattedtime
+                            $session.PutFiles(($file), ("$DestinationDir"),$True).Check()
+                            $currentdate = Get-Date -Format yyyyMMdd
+                            if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                                {
+                                New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                                "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                                }
+                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                            $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
+                            }
+                    }
+                    }
+                    }
+###############################################
+##No Passthrough, zipping, filetype specified##
+###############################################        
+                    Else
                         {
-                        New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
-                        "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                        if ($LocalZip -eq $True)
+                        {
+                        $session = New-Object WinSCP.Session
+                        $session.Open($sessionOptions)
+                        get-formattedtime
+
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -Include "$LocalFiletype" | Measure-Object).count
+                        while ($currentbatchtotal -ge $LocalZipQuantity){
+                            get-formattedtime
+                            $move = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -Include "$LocalFiletype" | select-object -last $LocalZipQuantity)
+                            $move | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
+                            $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\working" -Include "$LocalFiletype")
+                            [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                            $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                            foreach ($zip in $SendingZips)
+                                {
+                                get-formattedtime
+                                $session.PutFiles(("$zip"), ("$DestinationDir"),$True).Check()
+                                $currentdate = Get-Date -Format yyyyMMdd
+                                if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                                    {
+                                    New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                                    "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                                    }
+                                "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                                }
+                            $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
+                        }   
+                        if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
+                            {
+                            get-formattedtime
+                            $move = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $currentbatchtotal
+                            $move | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
+                            $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\working" -Include "$LocalFiletype")
+                            [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                            $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                            foreach ($zip in $SendingZips)
+                                {
+                                get-formattedtime
+                                $session.PutFiles(($zip), ("$DestinationDir"),$True).Check()
+                                $currentdate = Get-Date -Format yyyyMMdd
+                                if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                                    {
+                                    New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                                    "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                                    }
+                                "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                                }
+                            }
                         }
-                    "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                    $discoveredfilecount = ($discoveredfilecount - "1")
-                                         }
-            }
-            }
-################################################
-##No files being zipped, no filetype specified##
-################################################ 
-            else
-            {
-                $filesall = $session.EnumerateRemoteFiles($DestinationDir, "*", [WinSCP.EnumerationOptions]::None)
-                $discoveredfilecount = ($filesall | Measure-Object).count
-                while ($discoveredfilecount -gt "1"){
-                    foreach ($file in $filesall){
-                        $session.GetFiles(($file.FullName), ("$Using:LocalChildFolderPushing\$Basename\inbound\"),$True ,$transferOptions).Check()
+###########################
+##Passthrough, No zipping##
+###########################
+                Else
+                    {
+                    $session = New-Object WinSCP.Session
+                    $session.Open($sessionOptions)
+                    get-formattedtime
+
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
+                    while ($currentbatchtotal -ge "1"){
+                        get-formattedtime
+                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype")
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\outbound"
+                        $Sending = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"
+                        $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir"),$True).Check()
                         $currentdate = Get-Date -Format yyyyMMdd
                         if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
                             {
-                            New-Item "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -ItemType file
+                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
                             "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
                             }
-                        "$timestamp" + $Tab + $zip.name + $Tab + $zip.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
-                        $discoveredfilecount = ($discoveredfilecount - "1")
-                                                }
-                }
-            }
-                $session.Dispose()
-                exit 0
+                        "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                        $currentbatchtotal = ($currentbatchtotal - "1")
+                    }
+                    }
+###########################
+##Passthrough, un zipping##
+###########################
+                if ($LocalUnzip -eq $True)
+                    {
+                    $session = New-Object WinSCP.Session
+                    $session.Open($sessionOptions)
+                    get-formattedtime
+
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "*.zip" | Measure-Object).count
+                    while ($currentbatchtotal -gt "1"){
+                        get-formattedtime
+                        $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "*.zip")
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                        [io.compression.zipfile]::ExtractToDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\") 
+                        $SendingFiles = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"
+                        foreach ($file in $SendingFiles)
+                            {
+                            get-formattedtime
+                            $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir"),$True).Check()
+                            $currentdate = Get-Date -Format yyyyMMdd
+                            if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                                {
+                                New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                                "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                                }
+                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                            $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
+                            }
+                    }
+                    }
+                        }
+
+
+# Deliberately using an underscore instead of a dot,
+        # as the dot has specific meaning in operation mask
+        $suffix = "_filepart"
+        $transferOptions = New-Object WinSCP.TransferOptions
+        $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+ 
+        # Upload all .txt files with temporary "_filepart" suffix
+        $transferResult = $session.PutFiles(($file), ($remotePath + $suffix), $False, $transferOptions)
+        $transferResult.Check()
+ 
+        # Rename uploaded files
+        foreach ($transfer in $transferResult.Transfers)
+        {
+            $finalName = $transfer.Destination.SubString(0, $transfer.Destination.Length - $suffix.Length)
+            $session.MoveFiles($transfer.Destination, $finalName)
+            Remove-Item $file
+        }
     }
-}
+
+            if ($LocalZip -eq $True)
+                {
+                $session = New-Object WinSCP.Session
+                $session.Open($sessionOptions)
+                ####
+                $suffix = "_filepart"
+                $transferOptions = New-Object WinSCP.TransferOptions
+                $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                get-formattedtime
+
+                $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | Measure-Object).count
+                while ($currentbatchtotal -ge $LocalZipQuantity){
+                    Get-formattedtime
+                    $move = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $LocalZipQuantity)
+                    $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                    $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                    [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                    $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                    
+                    foreach ($zip in $SendingZips)
+                            {
+                            get-formattedtime
+                            $transferresult = $session.PutFiles(($zip), ($DestinationDir + $suffix),$True)
+                            $transferresult.Check()
+                                foreach ($transfer in $transferresult.Transfers)
+                                {
+                                    $originalname = $transfer.Destination.SubString(0, $transfer.Destination.Length - $suffix.Length)
+                                    $session.MoveFiles($transfer.Destination, $finalName)
+                                    Remove-Item $zip
+                                }
+                            $currentdate = Get-Date -Format yyyyMMdd
+                            if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                                {
+                                New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                                "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                                }
+                            "$timestamp" + $Tab + $SendingZips.name + $Tab + $SendingZips.length + "Kb" + $Tab + $DestinationIP + $Tab + $DestinationDir + $Tab + $DestinationFTPType + $Tab + $DestinationFiletype | Out-File -FilePath "$Using:LoggingfolderPushing\$Basename\$currentdate.txt" -Append
+                            $currentbatchtotal = ($currentbatchtotal - $LocalZipQuantity)
+                            }
+               }
+                    if (($currentbatchtotal -lt $LocalZipQuantity) -and ($currentbatchtotal -ne "0"))
+                        {
+                        get-formattedtime
+                        $move = Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" -Include "$LocalFiletype" | select-object -last $currentbatchtotal
+                        $move | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
+                        $currentbatch = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\working" -Include "$LocalFiletype")
+                        [io.compression.zipfile]::CreateFromDirectory($currentbatch, "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
+                        $SendingZips = Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                        $session.PutFiles(($SendingZips), ("$DestinationDir"),$True).Check()
+                        $currentdate = Get-Date -Format yyyyMMdd
+                        if (!(Test-Path "$Using:LoggingfolderPushing\$basename\$currentdate.txt"))
+                            {
+                            New-Item "$Using:LoggingfolderPulling\$basename\$currentdate.txt" -ItemType file
+                            "Time" + $Tab + "Name" + $Tab + "Size (Kb)" + $Tab + "IP Address" + $Tab + "Directory" + $Tab + "FTP Type" + $Tab + "FileType" | Out-file -FilePath "$Using:LoggingfolderPushing\$basename\$currentdate.txt" -Append
+                            }
+                        }
+                        }
