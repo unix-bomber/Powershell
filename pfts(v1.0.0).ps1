@@ -1001,18 +1001,13 @@ if ($Control) {                 # Send a control message to the service
 if ($Service) {                 # Run the service
   Write-EventLog -LogName $logName -Source $serviceName -EventId 1005 -EntryType Information -Message "$scriptName -Service # Beginning background job"
   # Do the service background job
-  try {
-  # Start the control pipe handler thread
-    $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage"
 ######### TO DO: Implement your own service code here. ##########
 # Start pfts core logic
-$timerName = "Core logic of pfts service"
-
 #-----------------------------------------------------------------------------#
 #                                                                             #
-#   Function        Set-Locations                                             #
+#   Function        run-pfts                                                  #
 #                                                                             #
-#   Description     Sets required variables and locations                     #
+#   Description     Core logic of the script                                  #
 #                                                                             #
 #   Arguments       See the Param() block                                     #
 #                                                                             #
@@ -1023,7 +1018,7 @@ $timerName = "Core logic of pfts service"
 #                                                                             #
 #-----------------------------------------------------------------------------#
 
-function Set-Locations {
+function Run-pfts {
 $Global:LocalFTPClient = "C:\Program Files (x86)\WinSCP"
 $Parentfolder = "C:\pfts"
 $Loggingfolder = "C:\pfts\log"
@@ -1073,25 +1068,8 @@ if (!(Test-Path $LocalFTPClient))
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 2001 -EntryType Information -Message "Error: $Basename Can't find WinSCP .dll Ensure dll is present under C:\Program Files (x86)\WinSCP\WinSCPnet.dll $($_.Exception.Message)" -Category 1 -RawData 10,20
     Exit 1
     }
-}
 
-#-----------------------------------------------------------------------------#
-#                                                                             #
-#   Function        create-defaultpullfeeds                                   #
-#                                                                             #
-#   Description     creates inbound datafeed default configurations, and      #
-#                   directory structure                                       #
-#                                                                             #
-#   Arguments       See the Param() block                                     #
-#                                                                             #
-#   Notes                                                                     #
-#                                                                             #
-#   History                                                                   #
-#    2018-04-03 TWK Created this function                                     #
-#                                                                             #
-#-----------------------------------------------------------------------------#
 
-function create-defaultpullfeeds {
 Try {
 if ($LocalFriendlyPulling.length -le "1")
         {
@@ -1313,16 +1291,16 @@ Catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20 
     }
-    $toarchive = Get-ChildItem -Path "$Using:LoggingfolderPulling\$basename\*" -Exclude "$currentdate"
+    $toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPulling\$basename\" -Exclude "$currentdate"
     foreach ($archive in $toarchive.fullname) {
-        if ((Get-ChildItem -path $archive -Recurse) -contains "*.txt")
+        if ((Get-ChildItem -path $archive | select -First 5) -like "*.txt")
             {
             [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
-            Remove-Item –path "$toarchive\*.txt" -Recurse
+            Remove-Item –path "$archive\*.txt" -Recurse
             }
     }
 }
-'@    
+'@  
                         $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
                         }
                     }
@@ -1332,7 +1310,7 @@ Catch
 {
 Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pulling_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
 }
-}
+
 ################################
 ##End of pulling feed creation##
 ################################
@@ -1341,23 +1319,6 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
 ##Start of pushing feed creation##
 ##################################
 
-#-----------------------------------------------------------------------------#
-#                                                                             #
-#   Function        create-defaultpushfeeds                                   #
-#                                                                             #
-#   Description     creates outbound datafeed default configurations, and     #
-#                   directory structure                                       #
-#                                                                             #
-#   Arguments       See the Param() block                                     #
-#                                                                             #
-#   Notes                                                                     #
-#                                                                             #
-#   History                                                                   #
-#    2018-04-03 TWK Created this function                                     #
-#                                                                             #
-#-----------------------------------------------------------------------------#
-
-function create-defaultpushfeeds {
 Try {
 if ($LocalFriendlyPushing.length -le "1")
         {
@@ -1761,12 +1722,12 @@ if ($LocalPassthrough -eq "$True")
                 }
                 
         }
-    $toarchive = Get-ChildItem -Path "$Using:LoggingfolderPushing\$basename\*" -Exclude "$currentdate"
+    $toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPushing\$basename\" -Exclude "$currentdate"
     foreach ($archive in $toarchive.fullname) {
-        if ((Get-ChildItem -path $archive -Recurse) -contains "*.txt")
+        if ((Get-ChildItem -path $archive | select -First 5) -like "*.txt")
             {
             [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
-            Remove-Item –path "$toarchive\*.txt" -Recurse
+            Remove-Item –path "$archive\*.txt"
             }
     }
 }
@@ -1780,7 +1741,7 @@ Catch
 {
 Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
 }
-}
+
 
 ##################################
 ##End of pushing feed creation##
@@ -1790,23 +1751,6 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
 ##Loop that starts jobs##
 #########################
 
-#-----------------------------------------------------------------------------#
-#                                                                             #
-#   Function        pfts-jobhandler                                           #
-#                                                                             #
-#   Description     If a feed isn't running, it's started, if there's no data #
-#                   the feed stops                                            #
-#                                                                             #
-#   Arguments       See the Param() block                                     #
-#                                                                             #
-#   Notes                                                                     #
-#                                                                             #
-#   History                                                                   #
-#    2018-04-03 TWK Created this function                                     #
-#                                                                             #
-#-----------------------------------------------------------------------------#
-
-function pfts-jobhandler {
 try {
 $ActivePulling = Get-ChildItem -name "$LocalConfFolderPulling\*.ps1"
 $ActivePushing = Get-ChildItem -name "$LocalConfFolderPushing\*.ps1"
@@ -1839,14 +1783,16 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2004 -EntryType In
 Exit 1
 }
 }
-    
-    $period = 10 # seconds
-    $timer =  set-locations; create-defaultpullfeeds; create-defaultpushfeeds; pfts-jobhandler
+    try {
+    # Start the control pipe handler thread
+    $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage"
+    $timerName = "pfts"
+    $period = 30 # seconds
+    $timer = New-Object System.Timers.Timer
     $timer.Interval = ($period * 1000) # Milliseconds
     $timer.AutoReset = $true # Make it fire repeatedly
-    Register-ObjectEvent $timer -EventName Elapsed -SourceIdentifier $timerName -MessageData "Restarting pfts"
-    $timer.start() # Must be stopped in the finally block
-
+    Register-ObjectEvent $timer -EventName Elapsed -SourceIdentifier $timerName -MessageData "TimerTick"
+    $timer.start() #Must be stopped in the finally block
     # Now enter the main service event loop
     do { # Keep running until told to exit by the -Stop handler
       $event = Wait-Event # Wait for the next incoming event
@@ -1876,7 +1822,7 @@ Exit 1
           }
         }
         "TimerTick" { # Example. Periodic event generated for this example
-          Log "$scriptName -Service # pfts core logic is healthy"
+          Run-pfts
         }
         default { # Should not happen
           Log "$scriptName -Service # Unexpected event from ${source}: $Message"
