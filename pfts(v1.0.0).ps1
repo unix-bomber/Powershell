@@ -1,36 +1,17 @@
 ﻿###############################################################################
 #                                                                             #
-#   File name       PSService.ps1                                             #
+#   File name       pfts.ps1                                                  #
 #                                                                             #
-#   Description     A sample service in a standalone PowerShell script        #
+#   Description     A Powershell & WinSCP based file transfer service         #
+#   									                                      #
+#   Dependencies    Powershell 3.0, .net 3.5, WinSCP 5.13          	          #
 #                                                                             #
-#   Notes           The latest PSService.ps1 version is available in GitHub   #
-#                   repository https://github.com/JFLarvoire/SysToolsLib/ ,   #
-#                   in the PowerShell subdirectory.                           #
-#                   Please report any problem in the Issues tab in that       #
-#                   GitHub repository in                                      #
-#                   https://github.com/JFLarvoire/SysToolsLib/issues          #
-#                   If you do submit a pull request, please add a comment at  #
-#                   the end of this header with the date, your initials, and  #
-#                   a description of the changes. Also update $scriptVersion. #
-#                                                                             #
-#                   The initial version of this script was described in an    #
-#                   article published in the May 2016 issue of MSDN Magazine. #
-#                   https://msdn.microsoft.com/en-us/magazine/mt703436.aspx   #
-#                   This updated version has one major change:                #
-#                   The -Service handler in the end has been rewritten to be  #
-#                   event-driven, with a second thread waiting for control    #
-#                   messages coming in via a named pipe.                      #
-#                   This allows fixing a bug of the original version, that    #
-#                   did not stop properly, and left a zombie process behind.  #
-#                   The drawback is that the new code is significantly longer,#
-#                   due to the added PowerShell thread management routines.   #
-#                   On the other hand, these thread management routines are   #
-#                   reusable, and will allow building much more powerful      #
-#                   services.                                                 #
-#                                                                             #
-#                   Dynamically generates a small PSService.exe wrapper       #
-#                   application, that in turn invokes this PowerShell script. #
+#   Notes           Pfts (powershell file transfer service) is an extension   #
+#		    of the WinSCP FTP client. Versioning is available at              #
+#		    https://github.com/unix-bomber/Powershell.git                     #
+#		    pfts is heavily reliant on the PSService.ps1 JFLarvoire           #
+#		    created. The most updated version of his code is at               #
+#		    https://github.com/JFLarvoire/SysToolsLib/Powershell              #
 #                                                                             #
 #                   Some arguments are inspired by Linux' service management  #
 #                   arguments: -Start, -Stop, -Restart, -Status               #
@@ -39,71 +20,60 @@
 #                   The actual start and stop operations are done when        #
 #                   running as SYSTEM, under the control of the SCM (Service  #
 #                   Control Manager).                                         #
-#                                                                             #
-#                   To create your own service, make a copy of this file and  #
-#                   rename it. The file base name becomes the service name.   #
-#                   Then implement your own service code in the if ($Service) #
-#                   {block} at the very end of this file. See the TO DO       #
-#                   comment there.                                            #
-#                   There are global settings below the script param() block. #
-#                   They can easily be changed, but the defaults should be    #
-#                   suitable for most projects.                               #
-#                                                                             #
+#									                                          #
 #                   Service installation and usage: See the dynamic help      #
-#                   section below, or run: help .\PSService.ps1 -Detailed     #
+#                   section below, or run: help .\pfts.ps1 -Detailed          #
 #                                                                             #
 #                   Debugging: The Log function writes messages into a file   #
-#                   called C:\Windows\Logs\PSService.log (or actually         #
+#                   called C:\Windows\Logs\pfts.log (or actually              #
 #                   ${env:windir}\Logs\$serviceName.log).                     #
 #                   It is very convenient to monitor what's written into that #
 #                   file with a WIN32 port of the Unix tail program. Usage:   #
-#                   tail -f C:\Windows\Logs\PSService.log                     #
+#                   tail -f C:\Windows\Logs\pfts.log                          #
 #                                                                             #
 #   History                                                                   #
-#    2015-07-10 JFL jf.larvoire@hpe.com created this script.                  #
-#    2015-10-13 JFL Made this script completely generic, and added comments   #
-#                   in the header above.                                      #
-#    2016-01-02 JFL Moved the Event Log name into new variable $logName.      #
-#                   Improved comments.                                        #
-#    2016-01-05 JFL Fixed the StartPending state reporting.                   #
-#    2016-03-17 JFL Removed aliases. Added missing explicit argument names.   #
-#    2016-04-16 JFL Moved the official repository on GitHub.                  #
-#    2016-04-21 JFL Minor bug fix: New-EventLog did not use variable $logName.#
-#    2016-05-25 JFL Bug fix: The service task was not properly stopped; Its   #
-#                   finally block was not executed, and a zombie task often   #
-#                   remained. Fixed by using a named pipe to send messages    #
-#                   to the service task.                                      #
-#    2016-06-05 JFL Finalized the event-driven service handler.               #
-#                   Fixed the default command setting in PowerShell v2.       #
-#                   Added a sample -Control option using the new pipe.        #
-#    2016-06-08 JFL Rewrote the pipe handler using PSThreads instead of Jobs. #
-#    2016-06-09 JFL Finalized the PSThread management routines error handling.#
-#                   This finally fixes issue #1.                              #
-#    2016-08-22 JFL Fixed issue #3 creating the log and install directories.  #
-#                   Thanks Nischl.                                            #
-#    2016-09-06 JFL Fixed issue #4 detecting the System account. Now done in  #
-#                   a language-independent way. Thanks A Gonzalez.            #
-#    2016-09-19 JFL Fixed issue #5 starting services that begin with a number.#
-#                   Added a $ServiceDescription string global setting, and    #
-#                   use it for the service registration.                      #
-#                   Added comments about Windows event logs limitations.      #
-#    2016-11-17 RBM Fixed issue #6 Mangled hyphen in final Unregister-Event.  #
-#    2017-05-10 CJG Added execution policy bypass flag.                       #
-#    2017-10-04 RBL rblindberg Updated C# code OnStop() routine fixing        #
-#                   orphaned process left after stoping the service.          #
-#    2017-12-05 NWK omrsafetyo Added ServiceUser and ServicePassword to the   #
-#                   script parameters.                                        #
-#    2017-12-10 JFL Removed the unreliable service account detection tests,   #
-#                   and instead use dedicated -SCMStart and -SCMStop          #
-#                   arguments in the PSService.exe helper app.                #
-#                   Renamed variable userName as currentUserName.             #
-#                   Renamed arguments ServiceUser and ServicePassword to the  #
-#                   more standard UserName and Password.                      #
-#                   Also added the standard argument -Credential.             #
-#                                                                             #
+#    2018-3-15 TWK tim@pueobusinesssolutions.com created file transfer script #
+#    2018-4-3  TWK tim@pueobusinesssolutions.com first push to master branch  #
 ###############################################################################
 #Requires -version 2
 
+<#
+
+  -Basic Installation & Configuration:
+#!#!#!#!#!#!#For brevity, assume any file paths mentioning pulling include pushing#!#!#!#!#!#!#
+
+   1.) Ensure WinSCP is installed in its default directory at "C:\Program Files (x86)\WinSCP"
+
+   2.) Create a directory called C:\Temp & place pfts.ps1 inside
+       
+	2.a) If you want to change to a folder of your choice...
+	Right click on pfts.ps1, (or use your favorite text editor)
+	and search for variable $scriptFullName. Change this to the
+	file path of your choice.
+
+   3.) Edit C:\Temp\pfts.ps1 (or whatever path you've specified) and
+       search for the variable "$LocalFriendlyPulling" and $LocalFriendlyPushing
+       and edit according to the datafeeds you need to pull and push (examples are present)
+
+   4.) Open powershell (any version except (x86)) and run
+       C:\Temp\pfts.ps1 -setup (or whatever path you've specified)
+       Then run
+       C:\Temp\pfts.ps1 -start
+
+   5.) Observe pulling & pushing conf folders, (C:\pfts\pulling\conf) stop the service when all datafeeds are built
+       C:\Temp\pfts.ps1 -stop
+
+   6.) C:\pfts is the default root folder for data feed configurations, files entrance and exit, and transactional logs
+       The file structure will depend based on the friendly names that you placed into 
+       $LocalFriendlyPulling/Pushing
+   
+   7.) Under C:\pfts\pulling\config, there will be a set of scripts based on the friendly
+       names you input. Follow the instructions at the top of them, and edit the variables
+       based on your needs.
+
+   8.) Start the service, once datafeed configurations are set by using 
+       C:\Temp\pfts.ps1 -start
+       MONITOR YOUR LOGS, AND DIRECTORIES FOR ANYTHING ABNORMAL.
 <#
   .SYNOPSIS
     A sample Windows service, in a standalone PowerShell script.
@@ -1036,10 +1006,24 @@ if ($Service) {                 # Run the service
     $pipeThread = Start-PipeHandlerThread $pipeName -Event "ControlMessage"
 ######### TO DO: Implement your own service code here. ##########
 # Start pfts core logic
-$Cronos = "1"
-While ($Cronos = "1")
-{
 $timerName = "Core logic of pfts service"
+
+#-----------------------------------------------------------------------------#
+#                                                                             #
+#   Function        Set-Locations                                             #
+#                                                                             #
+#   Description     Sets required variables and locations                     #
+#                                                                             #
+#   Arguments       See the Param() block                                     #
+#                                                                             #
+#   Notes                                                                     #
+#                                                                             #
+#   History                                                                   #
+#    2018-04-03 TWK Created this function                                     #
+#                                                                             #
+#-----------------------------------------------------------------------------#
+
+function Set-Locations {
 $Global:LocalFTPClient = "C:\Program Files (x86)\WinSCP"
 $Parentfolder = "C:\pfts"
 $Loggingfolder = "C:\pfts\log"
@@ -1089,7 +1073,25 @@ if (!(Test-Path $LocalFTPClient))
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 2001 -EntryType Information -Message "Error: $Basename Can't find WinSCP .dll Ensure dll is present under C:\Program Files (x86)\WinSCP\WinSCPnet.dll $($_.Exception.Message)" -Category 1 -RawData 10,20
     Exit 1
     }
+}
 
+#-----------------------------------------------------------------------------#
+#                                                                             #
+#   Function        create-defaultpullfeeds                                   #
+#                                                                             #
+#   Description     creates inbound datafeed default configurations, and      #
+#                   directory structure                                       #
+#                                                                             #
+#   Arguments       See the Param() block                                     #
+#                                                                             #
+#   Notes                                                                     #
+#                                                                             #
+#   History                                                                   #
+#    2018-04-03 TWK Created this function                                     #
+#                                                                             #
+#-----------------------------------------------------------------------------#
+
+function create-defaultpullfeeds {
 Try {
 if ($LocalFriendlyPulling.length -le "1")
         {
@@ -1330,6 +1332,7 @@ Catch
 {
 Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pulling_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
 }
+}
 ################################
 ##End of pulling feed creation##
 ################################
@@ -1338,6 +1341,23 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
 ##Start of pushing feed creation##
 ##################################
 
+#-----------------------------------------------------------------------------#
+#                                                                             #
+#   Function        create-defaultpushfeeds                                   #
+#                                                                             #
+#   Description     creates outbound datafeed default configurations, and     #
+#                   directory structure                                       #
+#                                                                             #
+#   Arguments       See the Param() block                                     #
+#                                                                             #
+#   Notes                                                                     #
+#                                                                             #
+#   History                                                                   #
+#    2018-04-03 TWK Created this function                                     #
+#                                                                             #
+#-----------------------------------------------------------------------------#
+
+function create-defaultpushfeeds {
 Try {
 if ($LocalFriendlyPushing.length -le "1")
         {
@@ -1749,7 +1769,7 @@ if ($LocalPassthrough -eq "$True")
             Remove-Item –path "$toarchive\*.txt" -Recurse
             }
     }
-    }
+}
 '@    
                         $PushChildScriptBlock | Set-Content -Path "$LocalConfFolderPushing\$Friendly.ps1"
                         }
@@ -1760,6 +1780,8 @@ Catch
 {
 Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType Information -Message "Info: Error Creating file structure & child scripts pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20 
 }
+}
+
 ##################################
 ##End of pushing feed creation##
 ##################################
@@ -1767,6 +1789,24 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
 #########################
 ##Loop that starts jobs##
 #########################
+
+#-----------------------------------------------------------------------------#
+#                                                                             #
+#   Function        pfts-jobhandler                                           #
+#                                                                             #
+#   Description     If a feed isn't running, it's started, if there's no data #
+#                   the feed stops                                            #
+#                                                                             #
+#   Arguments       See the Param() block                                     #
+#                                                                             #
+#   Notes                                                                     #
+#                                                                             #
+#   History                                                                   #
+#    2018-04-03 TWK Created this function                                     #
+#                                                                             #
+#-----------------------------------------------------------------------------#
+
+function pfts-jobhandler {
 try {
 $ActivePulling = Get-ChildItem -name "$LocalConfFolderPulling\*.ps1"
 $ActivePushing = Get-ChildItem -name "$LocalConfFolderPushing\*.ps1"
@@ -1798,8 +1838,15 @@ Catch
 Write-EventLog -LogName "Application" -Source "pfts" -EventID 2004 -EntryType Information -Message "Info: Error: With $basename, job handler: $($_.Exception.Message)" -Category 1 -RawData 10,20
 Exit 1
 }
-Start-Sleep -Seconds 5
 }
+    
+    $period = 10 # seconds
+    $timer =  set-locations; create-defaultpullfeeds; create-defaultpushfeeds; pfts-jobhandler
+    $timer.Interval = ($period * 1000) # Milliseconds
+    $timer.AutoReset = $true # Make it fire repeatedly
+    Register-ObjectEvent $timer -EventName Elapsed -SourceIdentifier $timerName -MessageData "Restarting pfts"
+    $timer.start() # Must be stopped in the finally block
+
     # Now enter the main service event loop
     do { # Keep running until told to exit by the -Stop handler
       $event = Wait-Event # Wait for the next incoming event
