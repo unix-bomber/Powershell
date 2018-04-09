@@ -1750,7 +1750,35 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
 #########################
 ##Loop that starts jobs##
 #########################
+try {
+$ActivePulling = Get-ChildItem -name "$LocalConfFolderPulling\*.ps1"
+$ActivePushing = Get-ChildItem -name "$LocalConfFolderPushing\*.ps1"
+$ActivePulling = $ActivePulling -replace ".{4}$"
+$ActivePushing = $ActivePushing -replace ".{4}$"
 
+$ActivePulling | ForEach-Object {
+    if ((Get-Job -name "pulling_$_").state -ne "Running")
+        {
+        Stop-Job -name "pulling_$_"
+        $PassToJob = "$LocalConfFolderPulling\$_.ps1"
+        Start-Job -name "pulling_$_" -FilePath "$LocalConfFolderPulling\$_.ps1" -ArgumentList $PassToJob
+        }
+}
+
+$ActivePushing | ForEach-Object {
+    if ((Get-Job -name "pushing_$_").state -ne "Running")
+        {
+        Stop-Job -name "pushing_$_"
+        $PassToJob = "$LocalConfFolderPushing\$_.ps1"
+        Start-Job -name "pushing_$_" -FilePath "$LocalConfFolderPushing\$_.ps1" -ArgumentList $PassToJob
+        }
+}
+}
+Catch
+{
+Write-EventLog -LogName "Application" -Source "pfts" -EventID 2004 -EntryType Information -Message "Info: Error: With $basename, job handler: $($_.Exception.Message)" -Category 1 -RawData 10,20
+Exit 1
+}
 }
     try {
     # Start the control pipe handler thread
@@ -1792,35 +1820,6 @@ Write-EventLog -LogName "Application" -Source "pfts" -EventID 2003 -EntryType In
         }
         "TimerTick" { # Example. Periodic event generated for this example
           Run-pfts
-          try {
-$ActivePulling = Get-ChildItem -name "$LocalConfFolderPulling\*.ps1"
-$ActivePushing = Get-ChildItem -name "$LocalConfFolderPushing\*.ps1"
-$ActivePulling = $ActivePulling -replace ".{4}$"
-$ActivePushing = $ActivePushing -replace ".{4}$"
-
-$ActivePulling | ForEach-Object {
-    if ((Get-Job -name "pulling_$_").state -ne "Running")
-        {
-        Stop-Job -name "pulling_$_"
-        $PassToJob = "$LocalConfFolderPulling\$_.ps1"
-        Start-Job -name "pulling_$_" -FilePath "$LocalConfFolderPulling\$_.ps1" -ArgumentList $PassToJob
-        }
-}
-
-$ActivePushing | ForEach-Object {
-    if ((Get-Job -name "pushing_$_").state -ne "Running")
-        {
-        Stop-Job -name "pushing_$_"
-        $PassToJob = "$LocalConfFolderPushing\$_.ps1"
-        Start-Job -name "pushing_$_" -FilePath "$LocalConfFolderPushing\$_.ps1" -ArgumentList $PassToJob
-        }
-}
-}
-Catch
-{
-Write-EventLog -LogName "Application" -Source "pfts" -EventID 2004 -EntryType Information -Message "Info: Error: With $basename, job handler: $($_.Exception.Message)" -Category 1 -RawData 10,20
-Exit 1
-}
         }
         default { # Should not happen
           Log "$scriptName -Service # Unexpected event from ${source}: $Message"
