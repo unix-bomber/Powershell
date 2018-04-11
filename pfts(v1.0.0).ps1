@@ -1023,7 +1023,7 @@ $Global:LocalFTPClient = "C:\Program Files (x86)\WinSCP"
 $Parentfolder = "C:\pfts"
 $Loggingfolder = "C:\pfts\log"
 $Global:LoggingfolderPulling = "C:\pfts\log\pulling"
-$LoggingfolderPushing = "C:\pfts\log\pushing"
+$Global:LoggingfolderPushing = "C:\pfts\log\pushing"
 
 $LocalFriendlyPulling = "coastguard"
 $LocalParentFolderPulling = "C:\pfts\pulling"
@@ -1032,8 +1032,8 @@ $Global:LocalConfFolderPulling = "$LocalParentFolderPulling\conf"
 
 $LocalFriendlyPushing = "coastguard"
 $LocalParentFolderPushing = "C:\pfts\pushing"
-$LocalChildFolderPushing =  "$LocalParentFolderPushing\destination"
-$LocalConfFolderPushing = "$LocalParentFolderPushing\conf"
+$Global:LocalChildFolderPushing =  "$LocalParentFolderPushing\destination"
+$Global:LocalConfFolderPushing = "$LocalParentFolderPushing\conf"
 
 ################################################
 $Basename = $($MyInvocation.MyCommand.name)
@@ -1121,6 +1121,21 @@ $Basename = $Basename -replace ".{4}$"
 $currentdate = Get-Date -Format yyyyMMdd
 $timestamp = (Get-Date -Format o) | foreach{$_ -replace ":", "."}
 $Tab = [char]9
+Add-Type -assembly "system.io.compression.filesystem"
+Remove-Item –path "C:\Windows\Temp\wscp*.tmp"
+##############################
+##compress any old translogs##
+##############################
+
+$toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPulling\$basename\" -Exclude "$currentdate"
+    foreach ($archive in $toarchive.fullname) {
+        if ((Get-ChildItem -path $archive | select -First 1) -like "*.txt")
+            {
+            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
+            Remove-Item –path "$archive\*.txt" -Recurse
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 3005 -EntryType Information -Message "pulling_$basename archived transaction logs" -Category 1 -RawData 10,20
+            }
+    }
 
 if ($OriginatorOS -eq "Linux")
 {   
@@ -1291,14 +1306,6 @@ Catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20 
     }
-    $toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPulling\$basename\" -Exclude "$currentdate"
-    foreach ($archive in $toarchive.fullname) {
-        if ((Get-ChildItem -path $archive | select -First 5) -like "*.txt")
-            {
-            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
-            Remove-Item –path "$archive\*.txt" -Recurse
-            }
-    }
 }
 '@  
                         $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
@@ -1370,9 +1377,24 @@ $Basename = $Basename -replace ".{4}$"
 $currentdate = Get-Date -Format yyyyMMdd
 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
 $Tab = [char]9
+Add-Type -assembly "system.io.compression.filesystem"
+Remove-Item –path "C:\Windows\Temp\wscp*.tmp"
+##############################
+##compress any old translogs##
+##############################
+
+$toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPushing\$basename\" -Exclude "$currentdate"
+    foreach ($archive in $toarchive.fullname) {
+        if ((Get-ChildItem -path $archive | select -First 1) -like "*.txt")
+            {
+            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip")
+            Remove-Item –path "$archive\*.txt"
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 3005 -EntryType Information -Message "pushing_$basename archived transaction logs" -Category 1 -RawData 10,20
+            }
+}
 
 if ($DestinationOS -eq "Linux")
-{   
+{
 try {
     if (!(test-path "$Using:LocalConfFolderPushing\push_pass$Basename.txt"))
         {
@@ -1476,8 +1498,6 @@ if ($LocalZip -and $LocalUnzip -eq "$True")
 ##Passthrough files##
 #####################
 
-Add-Type -assembly "system.io.compression.filesystem"
-
 if ($LocalPassthrough -eq "$True")
     {
     if (Test-Path (!("$Using:LocalChildFolderPulling\$Basename\inbound")))
@@ -1498,15 +1518,11 @@ if ($LocalPassthrough -eq "$True")
                 $session = New-Object WinSCP.Session
                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                 $transferOptions = New-Object WinSCP.TransferOptions
-                $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                
                 $session.Open($sessionOptions)
                 $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                    while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                    while ($currentbatchtotal -ge "1"){
                                 $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | select -Last $LocalZipQuantity
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
@@ -1514,12 +1530,9 @@ if ($LocalPassthrough -eq "$True")
                                 Remove-Item –path "$Using:LocalChildFolderPulling\$Basename\working\*" -Recurse
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                 $transferresult.check()
-                                }
                     $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
                     $session.ExecuteCommand($unpartcmdfull).Check()
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                     }
                 $session.Dispose()
                 exit 0
@@ -1538,23 +1551,16 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                        while ($currentbatchtotal -ge "1"){
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPulling\$Basename\inbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
                                 $transferresult.check()
-                                }
                         $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
                         $session.ExecuteCommand($unpartcmdfull).Check()
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                         }
                     $session.Dispose()
                     exit 0
@@ -1573,15 +1579,11 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                        while ($currentbatchtotal -ge "1"){
                                 $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 foreach ($m in $move.fullname){
@@ -1590,12 +1592,9 @@ if ($LocalPassthrough -eq "$True")
                                     $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                     $transferresult.check()
                                     }
-                                }
                         $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
                         $session.ExecuteCommand($unpartcmdfull).Check()
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                         }
                     $session.Dispose()
                     exit 0
@@ -1618,28 +1617,20 @@ if ($LocalPassthrough -eq "$True")
                 $session = New-Object WinSCP.Session
                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                 $transferOptions = New-Object WinSCP.TransferOptions
-                $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
                 $session.Open($sessionOptions)
                 $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Measure-Object).count
-                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                    while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                    while ($currentbatchtotal -ge "1"){
                                 $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | select -Last $LocalZipQuantity
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
-                            c    $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPushing\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 
                                 Remove-Item –path "$Using:LocalChildFolderPushing\$Basename\working\*" -Recurse
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                 $transferresult.check()
-                                }
                     $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
                     $session.ExecuteCommand($unpartcmdfull).Check()
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                    $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                    $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                     }
                 $session.Dispose()
                 exit 0
@@ -1658,23 +1649,16 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                        while ($currentbatchtotal -ge "1"){
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
                                 $transferresult.check()
-                                }
-                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                        $session.ExecuteCommand($unpartcmdfull).Check()
+                                $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                                $session.ExecuteCommand($unpartcmdfull).Check()
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                         }
                     $session.Dispose()
                     exit 0
@@ -1693,15 +1677,11 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.ResumeSupport.State = [WinSCP.TransferResumeSupportState]::Off
+                    
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
-                        while (($currentbatchtotal -ge "1") -or ($remotefileparts -ge "1")) {
-                            if ($currentbatchtotal -ge "1")
-                                {
+                        while ($currentbatchtotal -ge "1") {
                                 $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 foreach ($m in $move.fullname){
@@ -1709,28 +1689,17 @@ if ($LocalPassthrough -eq "$True")
                                     Remove-Item -Path $m
                                     $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                     $transferresult.check()
-                                    }
-                                }
+                                    }   
                         $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
                         $session.ExecuteCommand($unpartcmdfull).Check()
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        $RemoteFileInfo = $session.EnumerateRemoteFiles("$DestinationDir", "*$suffix", [WinSCP.EnumerationOptions]::None)
-                        $remotefileparts = ($RemoteFileInfo | Measure-Object).count
                         }
                     $session.Dispose()
                     exit 0
                 }
                 
         }
-    $toarchive = Get-ChildItem -Directory -Path "$Using:LoggingfolderPushing\$basename\" -Exclude "$currentdate"
-    foreach ($archive in $toarchive.fullname) {
-        if ((Get-ChildItem -path $archive | select -First 5) -like "*.txt")
-            {
-            [io.compression.zipfile]::CreateFromDirectory("$archive", "$archive\$timestamp.zip") 
-            Remove-Item –path "$archive\*.txt"
-            }
     }
-}
 '@    
                         $PushChildScriptBlock | Set-Content -Path "$LocalConfFolderPushing\$Friendly.ps1"
                         }
