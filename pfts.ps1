@@ -34,6 +34,7 @@
 #   History                                                                   #
 #    2018-3-15 TWK tim@pueobusinesssolutions.com created file transfer script #
 #    2018-4-3  TWK tim@pueobusinesssolutions.com first push to master branch  #
+#    2018-5-10  TWK tim@pueobusinesssolutions.com fixed memory leak, added s3 #
 ###############################################################################
 #Requires -version 2
 
