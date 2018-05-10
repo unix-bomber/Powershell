@@ -3,15 +3,15 @@
 #   File name       pfts.ps1                                                  #
 #                                                                             #
 #   Description     A Powershell & WinSCP based file transfer service         #
-#   									                                      #
-#   Dependencies    Powershell 3.0, .net 3.5, WinSCP 5.13          	          #
+#   									      #
+#   Dependencies    Powershell 3.0, .net 3.5, WinSCP 5.13          	      #
 #                                                                             #
 #   Notes           Pfts (powershell file transfer service) is an extension   #
-#		    of the WinSCP FTP client. Versioning is available at              #
-#		    https://github.com/unix-bomber/Powershell.git                     #
-#		    pfts is heavily reliant on the PSService.ps1 JFLarvoire           #
-#		    created. The most updated version of his code is at               #
-#		    https://github.com/JFLarvoire/SysToolsLib/Powershell              #
+#		    of the WinSCP FTP client. Versioning is available at      #
+#		    https://github.com/unix-bomber/Powershell.git             #
+#		    pfts is heavily reliant on the PSService.ps1 JFLarvoire   #
+#		    created. The most updated version of his code is at       #
+#		    https://github.com/JFLarvoire/SysToolsLib/Powershell      #
 #                                                                             #
 #                   Some arguments are inspired by Linux' service management  #
 #                   arguments: -Start, -Stop, -Restart, -Status               #
@@ -20,7 +20,7 @@
 #                   The actual start and stop operations are done when        #
 #                   running as SYSTEM, under the control of the SCM (Service  #
 #                   Control Manager).                                         #
-#									                                          #
+#									      #
 #                   Service installation and usage: See the dynamic help      #
 #                   section below, or run: help .\pfts.ps1 -Detailed          #
 #                                                                             #
@@ -73,7 +73,7 @@
 
    8.) Start the service, once datafeed configurations are set by using 
        C:\Temp\pfts.ps1 -start
-       MONITOR YOUR LOGS, AND DIRECTORIES FOR ANYTHING ABNORMAL.
+
 <#
   .SYNOPSIS
     A sample Windows service, in a standalone PowerShell script.
