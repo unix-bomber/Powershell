@@ -220,7 +220,7 @@ $scriptVersion = "2018-3-22"
 $argv0 = Get-Item $MyInvocation.MyCommand.Definition
 $script = "pfts"               # Ex: PSService
 $scriptName = "pfts.ps1"               # Ex: PSService.ps1
-$scriptFullName = "C:\Temp\pfts.ps1"       # Ex: C:\Temp\PSService.ps1
+$scriptFullName = "C:\Program Files\pfts\pfts.ps1"       # Ex: C:\Temp\PSService.ps1
 
 # Global settings
 $serviceName = $script                  # A one-word name used for net start commands
