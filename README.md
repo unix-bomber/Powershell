@@ -11,8 +11,8 @@ Pfts (powershell file transfer service) is an extension of the WinSCP FTP client
 
 ### Program Usage & Setup
 
-# Assumptions:
-There's a Linux server configured with SFTP access, and an accoutn with permissions to access required directories
+# External Assumptions:
+There's a Linux server configured with SFTP access, and an account with permissions to access required directories
 
 # Installation:
  1.) Ensure WinSCP is installed in its default directory at "C:\Program Files (x86)\WinSCP"
