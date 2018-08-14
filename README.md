@@ -1,4 +1,4 @@
-# Tim's Awesome PowerShell Scripts
+# Specific to pfts
 
 ## Description     A Powershell & WinSCP based file transfer service
 
