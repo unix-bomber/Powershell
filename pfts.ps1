@@ -3,15 +3,15 @@
 #   File name       pfts.ps1                                                  #
 #                                                                             #
 #   Description     A Powershell & WinSCP based file transfer service         #
-#   									                                      #
-#   Dependencies    Powershell 3.0, .net 3.5, WinSCP 5.13          	          #
+#   									      #
+#   Dependencies    Powershell 3.0, .net 3.5, WinSCP 5.13          	      #
 #                                                                             #
 #   Notes           pfts (powershell file transfer service) is an extension   #
-#		    of the WinSCP FTP client. Versioning is available at              #
-#		    https://github.com/unix-bomber/Powershell.git                     #
-#		    pfts is heavily reliant on the PSService.ps1 JFLarvoire           #
-#		    created. The most updated version of his code is at               #
-#		    https://github.com/JFLarvoire/SysToolsLib/Powershell              #
+#		    of the WinSCP FTP client. Versioning is available at      #
+#		    https://github.com/unix-bomber/Powershell.git             #
+#		    pfts is heavily reliant on the PSService.ps1 JFLarvoire   #
+#		    created. The most updated version of his code is at       #
+#		    https://github.com/JFLarvoire/SysToolsLib/Powershell      #
 #                                                                             #
 #                   Some arguments are inspired by Linux' service management  #
 #                   arguments: -Start, -Stop, -Restart, -Status               #
@@ -20,7 +20,7 @@
 #                   The actual start and stop operations are done when        #
 #                   running as SYSTEM, under the control of the SCM (Service  #
 #                   Control Manager).                                         #
-#									                                          #
+#									      #
 #                   Service installation and usage: See the dynamic help      #
 #                   section below, or run: help .\pfts.ps1 -Detailed          #
 #                                                                             #
@@ -34,6 +34,7 @@
 #   History                                                                   #
 #    2018-3-15 TWK tim@pueobusinesssolutions.com created file transfer script #
 #    2018-4-3  TWK tim@pueobusinesssolutions.com first push to master branch  #
+#    2018-5-10  TWK tim@pueobusinesssolutions.com fixed memory leak, added s3 #
 ###############################################################################
 #Requires -version 2
 
@@ -219,7 +220,7 @@ $scriptVersion = "2018-3-22"
 $argv0 = Get-Item $MyInvocation.MyCommand.Definition
 $script = "pfts"               # Ex: PSService
 $scriptName = "pfts.ps1"               # Ex: PSService.ps1
-$scriptFullName = "C:\Temp\pfts.ps1"       # Ex: C:\Temp\PSService.ps1
+$scriptFullName = "C:\Program Files\pfts\pfts.ps1"       # Ex: C:\Temp\PSService.ps1
 
 # Global settings
 $serviceName = $script                  # A one-word name used for net start commands
