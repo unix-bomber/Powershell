@@ -1,6 +1,6 @@
 ﻿#feel free to edit these variables
 $foldersparent = "D:\backup" #don't include a trailing backslah, aka \
-$folders = "PNR"#, "ESTA", "BCI" #an all option can be included here, but it's not implemented yet
+$folders = "examplefolder"#, "anotherexample", #an all option can be included here, but it's not implemented yet
 $archiveparent = "D:\backup\archive" #don't include a trailing backslash, aka \
 $makearchiveparent = "yes" #specify "yes", or "no" if the root directory 'archive parent' doesn't exist, will create for you
 
