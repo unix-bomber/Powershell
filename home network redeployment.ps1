@@ -35,7 +35,7 @@ if ($Currenthostname -ne $HostName)
     {
     TZUtil /s $TimeZone
     Rename-Computer -NewName $HostName -Confirm:$False
-    Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:YDJ2Q-CNPT3-JP8H9-K2KRM-2PRBF
+    Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:
     Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False Restart-Computer
     }
 
