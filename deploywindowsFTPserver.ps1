@@ -2,11 +2,9 @@
 
 #This was done for a 2012R2 server specifically. There's probably better ways to do this now, but I don't know them.
 
-Install-WindowsFeature Web-FTP-Server -IncludeAllSubFeature
-Install-WindowsFeature Web-Server -IncludeAllSubFeature  IncludeManagementTools
-
-Import-Module WebAdministration
-
+#!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!#
+#!#!#!#!#!#!#!#!#IF YOU ONLY HAVE A SINGLE VARIABLE, ENCLOSE IT LIKE THIS @('something')#!#!#!#!#!#!#!#!#
+#!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!#
 #These configure websites. You must have the same number of variables for all three of these variables (I.E. if you need 3 sites, there should be three FTPSiteNames, FTPRootDirs and FTPPorts)
 $FTPSiteName = 'PFTS Data'
 $FTPRootDir = 'D:\FTPRoot'
@@ -16,23 +14,32 @@ $FTPPort = "21"
 $CreateFTPUsers = $False #if true, create local ftp users, if false, don't create ftp users. Usefull if you have a domain account alreadys
 $FTPUserName = "FTPUser" #"anotheruser", "anotheruser1"
 $FTPPassword = 'P@ssword123' #"Password", "anotherPassword"
-$JustCreateGroup = $True #if true, create the group but not the user. This is useful if you're using Active Directory. This is more useful if you have slow AD
+$CreateGroup = $True #if true, creates a local group. This is useful if you're using Active Directory. This is more useful if you have slow AD
 $FTPUserGroupName = "FTP Users" #assign active directory users/group memberships to this local group, and/or local users.
 
 #authentication variables
 $Authtypes = 'ftpServer.security.authentication.basicAuthentication.enabled', 'ftpServer.security.authentication.windowsAuthentication.enabled' #A list of auth types is below
 #'ftpServer.security.authentication.basicAuthentication.enabled', 'ftpServer.security.authentication.windowsAuthentication.enabled'
 
+#install FTP&IIS, import modules
+Install-WindowsFeature Web-FTP-Server -IncludeAllSubFeature -IncludeManagementTools
+Install-WindowsFeature Web-Server -IncludeAllSubFeature  -IncludeManagementTools
+
+Import-Module WebAdministration
+
 #Create multiple users, give password, give permissions
 
-if ($JustCreateGroup = $True)
+if ($CreateGroup = $True)
 {
             #Create group
-            $ADSI = [ADSI]"WinNT://$env:ComputerName"
-            $FTPUserGroup = $ADSI.Create("Group", "$FTPUserGroupName")
-            $FTPUserGroup.SetInfo()
-            $FTPUserGroup.Description = "Members of this group can connect through FTP"
-            $FTPUserGroup.SetInfo()
+            if (!(Get-LocalGroup -Name $FTPUserGroupName))
+                {
+                $ADSI = [ADSI]"WinNT://$env:ComputerName"
+                $FTPUserGroup = $ADSI.Create("Group", "$FTPUserGroupName")
+                $FTPUserGroup.SetInfo()
+                $FTPUserGroup.Description = "Members of this group can connect through FTP"
+                $FTPUserGroup.SetInfo()
+                }
 }
 
 
@@ -69,15 +76,15 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
 	        $FTPPortTemp = $FTPPort[$i]
 	        $FTPSiteNameTemp = $FTPSiteName[$i]            
 
-	        New-Item -Path $FTPRootDirTemp -ItemType Folder
+	        New-Item -Path $FTPRootDirTemp -ItemType Directory
             New-WebFtpSite -Name $FTPSiteNameTemp -Port $FTPPortTemp -PhysicalPath $FTPRootDirTemp
             
             #Configure Basic Authentication for site
             $FTPSitePath = "IIS:\Sites\$FTPSiteNameTemp"
-            
+
             if ($AuthTypes.count -ge "1")
                 {
-                Set-ItemProperty -Path $FTPSitePath -Name $AuthTypes -Value $True
+                Set-ItemProperty -path "$FTPSitePath" -name 'ftpServer.security.authentication.basicAuthentication.enabled' -value $True
                 #Add an authorization read rule for FTP Users.
                     $Param = @{
                     Filter   = "/system.ftpServer/security/authorization"
@@ -89,11 +96,11 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
                     PSPath   = 'IIS:\'
                     Location = $FTPSiteNameTemp
                     }
-
+                }
                 Add-WebConfiguration @param
-            
+                    
                 #If you want to configure SSL policy from require to accept
-                <#
+
             $SSLPolicy = @(
             'ftpServer.security.ssl.controlChannelPolicy',
             'ftpServer.security.ssl.dataChannelPolicy'
@@ -102,12 +109,11 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
             Set-ItemProperty -Path $FTPSitePath -Name $SSLPolicy[1] -Value $false
             $UserAccount = New-Object System.Security.Principal.NTAccount("$FTPUserGroupName")
             $AccessRule = [System.Security.AccessControl.FileSystemAccessRule]::new($UserAccount,
-            'ReadAndExecute',
+            'Modify',
             'ContainerInherit,ObjectInherit',
             'None',
             'Allow'
             )
-            #>
 
             $accesscheck = Get-Acl -Path $FTPRootDirTemp
             $UserAccount = New-Object System.Security.Principal.NTAccount("$FTPUserGroupName")

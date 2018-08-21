@@ -72,7 +72,7 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
     $VHDSizetemp = $VHDSize[$i]
     $DataVHDSizetemp = $DataVHDSize[$i]
     $RAMtemp = $RAM[$i]
-    $CPUtemp = $CPU[$i]
+    $CPUtemp = $CPUcount[$i]
 
     $VHDPath = (“$MountPath" + "\" + $VMnamestemp + ".vhdx")
     $DataVHDPath = (“$MountPath" + "\" + $VMnamestemp + "_data.vhdx")
@@ -90,6 +90,7 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                     New-VHD -Path $DataVHDPath -SizeBytes $DataVHDSizeGB -Dynamic
                     Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $DataVHDPath
                     Add-VMDvdDrive -VMName $VMnamestemp -Path $ISOPath
+                    Set-VMFirmware "$VMnamestemp" -FirstBootDevice $vmNetworkAdapter
                     }
             }
 
