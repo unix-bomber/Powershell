@@ -29,6 +29,7 @@ Import-Module WebAdministration
 
 #create firewall rules for FTP
 New-NetFirewallRule -DisplayName "Allow ftp" -Direction Inbound -LocalPort 21 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Allow Inbound ftp control channels" -Direction Inbound -LocalPort 1024-65535 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "Allow Outbound ftp control channels" -Direction Outbound -LocalPort 1024-65535 -Protocol TCP -Action Allow
 New-NetFirewallRule -DisplayName "Allow ftp" -Direction Outbound -LocalPort 20 -Protocol TCP -Action Allow
 
@@ -98,7 +99,7 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
             if ($AuthTypes.count -ge "1")
                 {
                 Set-ItemProperty -path "$FTPSitePath" -name 'ftpServer.security.authentication.basicAuthentication.enabled' -value $True
-                Set-ItemProperty -path "$FTPSitePath" -name 'ftpServer.directoryBrowse.showFlags.StyleUnix' -value $True ####### TEST THIS
+                Set-ItemProperty -path "$FTPSitePath" -name 'ftpServer.directoryBrowse.showFlags' -value 4
                 #Add an authorization read rule for FTP Users.
                     $Param = @{
                     Filter   = "/system.ftpServer/security/authorization"
