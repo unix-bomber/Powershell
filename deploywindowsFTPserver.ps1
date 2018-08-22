@@ -37,7 +37,7 @@ New-NetFirewallRule -DisplayName "Allow ftp" -Direction Outbound -LocalPort 20 -
 if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue ))
     {
     Initialize-Disk -Number 1 -PartitionStyle GPT
-    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS
+    New-Partition -DiskNumber 1 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS
     TZUtil /s "Eastern Standard Time"
     }
 

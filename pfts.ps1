@@ -1253,7 +1253,7 @@ try {
         $session = New-Object WinSCP.Session
         $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
         $transferOptions = New-Object WinSCP.TransferOptions
-        $transferOptions.FileMask = "*<=15s"
+        $transferOptions.FileMask = "*<=15s; *>0"
         $session.Open($sessionOptions)
             $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
             $discoveredfilecount = ($discoveredfiles | Measure-Object).count
@@ -1293,7 +1293,7 @@ try {
     $session = New-Object WinSCP.Session
     $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
     $transferOptions = New-Object WinSCP.TransferOptions
-    $transferOptions.FileMask = "*<=15s"
+    $transferOptions.FileMask = "*<=15s; *>0"
     $session.Open($sessionOptions)
 
         $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
@@ -1529,12 +1529,12 @@ if ($LocalPassthrough -eq "$True")
                 $session = New-Object WinSCP.Session
                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                 $transferOptions = New-Object WinSCP.TransferOptions
-
+                $transferOptions.FileMask = "*>0"
                 $session.Open($sessionOptions)
                 $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
                     while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | select -Last $LocalZipQuantity
+                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | where Length -gt 1 | select -Last $LocalZipQuantity
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPulling\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 2>&1>$null
@@ -1562,7 +1562,7 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-
+                    $transferOptions.FileMask = "*>0"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
@@ -1590,12 +1590,12 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-
+                    $transferOptions.FileMask = "*>0"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
                         while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip"
+                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip" | where Length -gt 1
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 foreach ($m in $move.fullname){
                                     [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound") 2>&1>$null
@@ -1628,11 +1628,12 @@ if ($LocalPassthrough -eq "$True")
                 $session = New-Object WinSCP.Session
                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                 $transferOptions = New-Object WinSCP.TransferOptions
+                $transferOptions.FileMask = "*>0"
                 $session.Open($sessionOptions)
                 $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Measure-Object).count
                     while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | select -Last $LocalZipQuantity
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | where Length -gt 1 | select -Last $LocalZipQuantity
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPushing\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 2>&1>$null
@@ -1660,7 +1661,7 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-
+                    $transferOptions.FileMask = "*>0"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
@@ -1688,12 +1689,12 @@ if ($LocalPassthrough -eq "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-
+                    $transferOptions.FileMask = "*>0"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
                         while ($currentbatchtotal -ge "1") {
-                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip | where Length -gt 1"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 foreach ($m in $move.fullname){
                                     [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound") 2>&1>$null
