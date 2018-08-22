@@ -46,10 +46,10 @@ if ($Currenthostname -ne $HostName)
 $VerifySwitch=Get-VMSwitch
 Import-Module -Name Hyper-V
 
-if (!(Get-Partition -DriveLetter 'D' -ErrorAction SilentlyContinue ))
+if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue ))
     {
     Resize-Partition -DriveLetter 'C' -Size $OSpartition
-    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS
+    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
     Import-Module -Name netswitchteam
     New-Item -ItemType Directory -Path $MountPath
     if ($VerifySwitch.name -ne $SwitchName) 
