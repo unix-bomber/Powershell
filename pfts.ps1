@@ -1311,6 +1311,13 @@ Catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20
     }
+
+}
+catch
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3005 -EntryType Information -Message: pulling_$basename failure: $($_.ExceptionMessage)" -Category 1 -RawData 10,20
+    Exit 1
+    }
 }
 '@
                         $PullChildScriptBlock | Set-Content -Path "$LocalConfFolderPulling\$Friendly.ps1"
@@ -1517,17 +1524,6 @@ if ($LocalZip -and $LocalUnzip -eq "$True")
 ##End of connection being built##
 #################################
 
-###################################
-##Manifest of sent files handling##
-###################################
-    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
-        {
-        if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
-            {
-            New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
-            }
-            New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
-        }
 ############
 ##Alerting##
 ############
@@ -1699,7 +1695,7 @@ if ($LocalPassthrough -ne "$True")
     if ($LocalZip -eq $True)
         {
         Try {
-                if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\outbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count -ge 1)
+                if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count -ge 1)
                     {
                     if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
                         {
@@ -1742,7 +1738,7 @@ if ($LocalPassthrough -ne "$True")
     if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
         {
         Try {
-                if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
+                if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
                     {
                     if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
                         {
@@ -1780,7 +1776,7 @@ if ($LocalPassthrough -ne "$True")
     if ($LocalUnzip -eq $True)
         {
         Try {
-                    if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
+                    if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
                         {
                         if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
                             {
