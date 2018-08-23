@@ -1253,7 +1253,7 @@ try {
         $session = New-Object WinSCP.Session
         $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
         $transferOptions = New-Object WinSCP.TransferOptions
-        $transferOptions.FileMask = "*<=15s"
+        $transferOptions.FileMask = "*<=15s; *>0"
         $session.Open($sessionOptions)
             $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
             $discoveredfilecount = ($discoveredfiles | Measure-Object).count
@@ -1293,7 +1293,7 @@ try {
     $session = New-Object WinSCP.Session
     $session.SessionLogPath = "$Using:LoggingfolderPulling\$basename\$currentdate\$timestamp.txt"
     $transferOptions = New-Object WinSCP.TransferOptions
-    $transferOptions.FileMask = "*<=15s"
+    $transferOptions.FileMask = "*<=15s; *>0"
     $session.Open($sessionOptions)
 
         $discoveredfiles = $session.EnumerateRemoteFiles("$OriginatorDir", "$OriginatorFiletype", [WinSCP.EnumerationOptions]::None)
@@ -1310,6 +1310,13 @@ try {
 Catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 3004 -EntryType Information -Message "Info: Error with pulling_$basename non-zipping file transfer $($_.Exception.Message)" -Category 1 -RawData 10,20
+    }
+
+}
+catch
+    {
+    Write-EventLog -LogName "Application" -Source "pfts" -EventID 3005 -EntryType Information -Message: pulling_$basename failure: $($_.ExceptionMessage)" -Category 1 -RawData 10,20
+    Exit 1
     }
 }
 '@
@@ -1350,7 +1357,7 @@ $PushChildScriptBlock = @'
 $DestinationFTPType = "sftp"#required specify if you want to use scp sftp ftps s3 Ex. "scp" 
 $DestinationUsername = "pfts"#required username of account used to connect to data source Ex. "username" s3 use your public api key
 $DestinationAuth = "password"#required, valid values are "password", "sshkey" or "certificate" Ex. "password" s3 use password
-$DestinationSecurepassword = "12qwaszx!@QWASZX" for s3 use secret key #the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
+$DestinationSecurepassword = "12qwaszx!@QWASZX" #for s3 use secret key the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
 $DestinationSSHkey = $null#if using ssh keys, specify full path to key
 $DestinationSecureSSHkeyPassword = $null#password of ssh key, if used
 $DestinationFingerprint = "ssh-ed25519 256 hmk1czu5R0VTtjno/1fGeTMTQRaaMKg86nJZHsKnZpE="#required, unless s3. You can obtain this using the winscp gui Ex. "ssh-rsa 2048 xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
@@ -1367,6 +1374,16 @@ $LocalUnzip = $null#this option unzips files prior to sending to the distant end
 $LocalFiletype = "*.xml"#required this will collect only files by file extension ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
 $LocalPassthrough = $True#this option allows one to pass files from the 'pulling' folder directly to the corresponding pushing folder. the only setup required is to name the friendly pushing the same as the friendly pulling, and to specify this value $True
 $DestinationOS = "Linux"#specify Linux or Windows, option not implemented don't use
+##############################
+##Rudimentary Alert settings##
+##############################
+$SMTPAlert = $True #turns the alert on or off
+$SMTPAlertTime = "60" #if data hasn't been transfered in 'x' minutes, send an email 
+$SMTPServer = "192.168.0.2"#IP address or hostname of mail server
+$SMTPPort = "25"#port to connect with
+$SMTPFrom = "SMTPalert@gmail.com" #use the format x@domain
+$SMTPTo = "SMTPReceive@gmail.com" #use the format x@domain
+$SMTPPriority = "High" #use "High" "Medium" or "Low"
 ########################################################
 ##Don't go past here unless you know what you're doing##
 ########################################################
@@ -1430,6 +1447,7 @@ try {
                 }
             }
     }
+
 catch
     {
     Write-EventLog -LogName "Application" -Source "pfts" -EventID 4000 -EntryType Information -Message "Error: pushing_$basename credential failure $($_.Exception.Message)" -Category 1 -RawData 10,20
@@ -1505,6 +1523,31 @@ if ($LocalZip -and $LocalUnzip -eq "$True")
 #################################
 ##End of connection being built##
 #################################
+
+############
+##Alerting##
+############
+if ($SMTPAlert -eq "$True")
+    {
+    $lastlog = (Get-ChildItem -Path $Using:LoggingfolderPushing\$basename\$currentdate | select -Last 1).LastWriteTime
+    if ($lastlog.count -lt "2")
+        {
+        $lastdir = Get-ChildItem -Path $Using:LoggingfolderPushing\$basename | select -Last 1
+        $lastfile = Get-ChildItem -Path $lastdir.FullName | select -Last 1
+            if ($lastfile -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+                {
+                Send-MailMessage -Port $SMTPPort -From $SMTPFrom -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
+                Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
+                }
+        }
+
+    elseif ($lastlog -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+        {
+        Send-MailMessage -Port $SMTPPort -From $SMTPFrom -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
+        Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
+        }
+    }
+
 #####################
 ##Passthrough files##
 #####################
@@ -1516,184 +1559,242 @@ if ($LocalPassthrough -eq "$True")
         Write-EventLog -LogName "Application" -Source "pfts" -EventID 4004 -EntryType Information -Message "Error: $basename Can't passthrough, there's no folder named $Using:LocalChildFolderPulling\$Basename\inbound" -Category 1 -RawData 10,20
         exit 1
         }
-            if ($LocalZip -eq $True)
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+            
+                if ($LocalZip -eq $True)
                     {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
-                        {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
-                        }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
-                    }
-                $session = New-Object WinSCP.Session
-                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
-                $transferOptions = New-Object WinSCP.TransferOptions
-
-                $session.Open($sessionOptions)
-                $suffix = "_part"
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | select -Last $LocalZipQuantity
+                    try {
+                        if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count -ge 1)
+                            {
+                            if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                                {
+                                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                    {
+                                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                                    }
+                                New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                                }
+                            $session = New-Object WinSCP.Session
+                            $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                            $transferOptions = New-Object WinSCP.TransferOptions
+                            $transferOptions.FileMask = "*>0"
+                            $session.Open($sessionOptions)
+                            $suffix = "_part"
+                            $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count
+                            while ($currentbatchtotal -ge "1"){
+                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | where Length -gt 1 | select -Last $LocalZipQuantity  
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPulling\$Basename\working"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPulling\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 2>&1>$null
                                 Remove-Item –path "$Using:LocalChildFolderPulling\$Basename\working\*" -Recurse
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                 $transferresult.check()
-                    $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                    $session.ExecuteCommand($unpartcmdfull).Check()
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                    }
-                $session.Dispose()
-                exit 0
-                }
-
-            if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
-                    {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                                $session.ExecuteCommand($unpartcmdfull).Check()
+                                $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | where Length -gt 1).count
+                                }
+                            $session.Dispose()
+                            }
+                        }
+                    catch 
                         {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        Write-EventLog -LogName "Application" -Source "pfts" -EventID 5001 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+                        exit 1
                         }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
-                    }
-                    $session = New-Object WinSCP.Session
-                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
-                    $transferOptions = New-Object WinSCP.TransferOptions
-
-                    $session.Open($sessionOptions)
-                    $suffix = "_part"
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        while ($currentbatchtotal -ge "1"){
-                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPulling\$Basename\inbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
-                                $transferresult.check()
-                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                        $session.ExecuteCommand($unpartcmdfull).Check()
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        }
-                    $session.Dispose()
                     exit 0
-                 }
-
-            if ($LocalUnzip -eq $True)
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
-                    {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
-                        {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
-                        }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
                     }
-                    $session = New-Object WinSCP.Session
-                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
-                    $transferOptions = New-Object WinSCP.TransferOptions
-
-                    $session.Open($sessionOptions)
-                    $suffix = "_part"
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
-                        while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip"
-                                $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
-                                foreach ($m in $move.fullname){
-                                    [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound") 2>&1>$null
-                                    Remove-Item -Path $m
-                                    $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
-                                    $transferresult.check()
+                
+                if ($LocalUnzip -eq $True)
+                    {
+                    try {
+                            if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
+                                {
+                                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                                    {
+                                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                        {
+                                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                                        }
+                                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
                                     }
-                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                        $session.ExecuteCommand($unpartcmdfull).Check()
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Measure-Object).count
+                                $session = New-Object WinSCP.Session
+                                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                                $transferOptions = New-Object WinSCP.TransferOptions
+                                $transferOptions.FileMask = "*>0"
+                                $session.Open($sessionOptions)
+                                $suffix = "_part"
+                                $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound").count
+                                    while ($currentbatchtotal -ge "1"){
+                                            $move = Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound\*.zip" | where Length -gt 1
+                                            $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+                                            foreach ($m in $move.fullname){
+                                                [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound") 2>&1>$null
+                                                Remove-Item -Path $m
+                                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
+                                                $transferresult.check()
+                                            }
+                                            $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                                            $session.ExecuteCommand($unpartcmdfull).Check()
+                                            $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | where Length -gt 1).count
+                                    }
+                                $session.Dispose()
+                                }
                         }
-                    $session.Dispose()
-                    exit 0
-                }
+                    catch
+                        {
+                        Write-EventLog -LogName "Application" -Source "pfts" -EventID 5002 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+                        exit 1
+                        }
+                    exit 0  
+                    }
 
+                if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
+                    {
+                    try {
+                            if ((Get-ChildItem "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count -ge 1)
+                                {
+                                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                                    {
+                                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                        {
+                                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                                        }
+                                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                                    }
+                                $session = New-Object WinSCP.Session
+                                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                                $transferOptions = New-Object WinSCP.TransferOptions
+                                $transferOptions.FileMask = "*>0"
+                                $session.Open($sessionOptions)
+                                $suffix = "_part"
+                                $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound").count
+                                while ($currentbatchtotal -ge "1"){
+                                        $transferresult = $session.PutFiles(("$Using:LocalChildFolderPulling\$Basename\inbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
+                                        $transferresult.check()
+                                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                                        $session.ExecuteCommand($unpartcmdfull).Check()
+                                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | where Length -gt 1 ).count
+                                    }
+                                $session.Dispose()
+                                }
+                        }
+                    catch
+                        {
+                        Write-EventLog -LogName "Application" -Source "pfts" -EventID 5003 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+                        exit 1
+                        }
+                    exit 0
+                    }
     }
 
-    if ($LocalPassthrough -ne "$True")
+################
+##Direct files##
+################
+
+if ($LocalPassthrough -ne "$True")
+    {
+    if ($LocalZip -eq $True)
         {
-            if ($LocalZip -eq $True)
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+        Try {
+                if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count -ge 1)
                     {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
                         {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                        if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                            {
+                            New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                            }
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
                         }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
-                    }
-                $session = New-Object WinSCP.Session
-                $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
-                $transferOptions = New-Object WinSCP.TransferOptions
-                $session.Open($sessionOptions)
-                $suffix = "_part"
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Measure-Object).count
-                    while ($currentbatchtotal -ge "1"){
-                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | select -Last $LocalZipQuantity
+                    $session = New-Object WinSCP.Session
+                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                    $transferOptions = New-Object WinSCP.TransferOptions
+                    $transferOptions.FileMask = "*>0"
+                    $session.Open($sessionOptions)
+                    $suffix = "_part"
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Sort-Object -Property Length | where Length -gt 1 ).count
+                        while ($currentbatchtotal -ge "1"){
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | where Length -gt 1 | select -Last $LocalZipQuantity
                                 $move.fullname | Move-Item -Destination "$Using:LocalChildFolderPushing\$Basename\working"
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 [io.compression.zipfile]::CreateFromDirectory("$Using:LocalChildFolderPushing\$Basename\working", "$Using:LocalChildFolderPushing\$Basename\outbound\$timestamp.zip") 2>&1>$null
                                 Remove-Item –path "$Using:LocalChildFolderPushing\$Basename\working\*" -Recurse
                                 $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                 $transferresult.check()
-                    $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                    $session.ExecuteCommand($unpartcmdfull).Check()
-                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                    }
-                $session.Dispose()
-                exit 0
-                }
-
-            if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
-                    {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
-                        {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
-                        }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
-                    }
-                    $session = New-Object WinSCP.Session
-                    $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
-                    $transferOptions = New-Object WinSCP.TransferOptions
-
-                    $session.Open($sessionOptions)
-                    $suffix = "_part"
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        while ($currentbatchtotal -ge "1"){
-                                $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
-                                $transferresult.check()
-                                $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                                $session.ExecuteCommand($unpartcmdfull).Check()
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                        $session.ExecuteCommand($unpartcmdfull).Check()
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | where Length -gt 1).count
                         }
                     $session.Dispose()
-                    exit 0
-                 }
-
-            if ($LocalUnzip -eq $True)
-                {
-                if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
-                    {
-                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
-                        {
-                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
-                        }
-                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
                     }
+            }
+        Catch
+            {
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 5004 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+            exit 1
+            }
+        exit 0
+        }
+
+    if (($LocalZip -ne $True) -and ($LocalUnzip -ne $True))
+        {
+        Try {
+                if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
+                    {
+                    if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                        {
+                        if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                            {
+                            New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                            }
+                        New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                        }
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-
+                    $transferOptions.FileMask = "*>0"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
-                        while ($currentbatchtotal -ge "1") {
-                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip"
+                    $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1 ).count
+                        while ($currentbatchtotal -ge "1"){
+                            $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + $suffix), $True, $transferOptions)
+                            $transferresult.check()
+                            $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                            $session.ExecuteCommand($unpartcmdfull).Check()
+                            $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1).count
+                            }
+                        $session.Dispose()
+                    }
+            }
+        Catch
+            {
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 5005 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+            exit 1
+            }
+        exit 0
+        }
+
+    if ($LocalUnzip -eq $True)
+        {
+        Try {
+                    if ((Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1).count -ge 1)
+                        {
+                        if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"))
+                            {
+                            if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                {
+                                New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                                }
+                            New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt" -ItemType file
+                            }
+                        $session = New-Object WinSCP.Session
+                        $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
+                        $transferOptions = New-Object WinSCP.TransferOptions
+                        $transferOptions.FileMask = "*>0"
+                        $session.Open($sessionOptions)
+                        $suffix = "_part"
+                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1 ).count
+                            while ($currentbatchtotal -ge "1") {
+                                $move = Get-ChildItem "$Using:LocalChildFolderPushing\$Basename\outbound\*.zip" | where Length -gt 1
                                 $timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
                                 foreach ($m in $move.fullname){
                                     [System.IO.Compression.ZipFile]::ExtractToDirectory($m, "$Using:LocalChildFolderPushing\$Basename\outbound") 2>&1>$null
@@ -1701,16 +1802,22 @@ if ($LocalPassthrough -eq "$True")
                                     $transferresult = $session.PutFiles(("$Using:LocalChildFolderPushing\$Basename\outbound\$LocalFiletype"), ("$DestinationDir/" + "*.*" + "$suffix"), $True, $transferOptions)
                                     $transferresult.check()
                                     }
-                        $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
-                        $session.ExecuteCommand($unpartcmdfull).Check()
-                        $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Measure-Object).count
+                            $unpartcmdfull = 'cd ' + "$DestinationDir;" + 'for file in *_part ; do mv $file  $(echo $file |sed ' + "'" + 's/.....$//' + "'" + '); done'
+                            $session.ExecuteCommand($unpartcmdfull).Check()
+                            $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1 ).count
+                            }
+                        $session.Dispose()
                         }
-                    $session.Dispose()
-                    exit 0
-                }
-
+            }
+        Catch
+            {
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 5006 -EntryType Information -Message "Error: pushing_$basename $($_.Exception.Message)" -Category 1 -RawData 10,20
+            exit 1
+            }
+        exit 0
         }
     }
+}
 '@
                         $PushChildScriptBlock | Set-Content -Path "$LocalConfFolderPushing\$Friendly.ps1"
                         Write-EventLog -LogName "Application" -Source "pfts" -EventID 2002 -EntryType Information -Message "Info: pushing datafeed $Friendly added" -Category 1 -RawData 10,20

@@ -1,5 +1,8 @@
 ﻿#----- Initialization
 
+#####move the ISO to top of order
+#####move autounattend to ISO root
+
 #----- Hypervisor Variables
 $TimeZone= “Eastern Standard Time”
 $HostName= “HELIO”
@@ -43,10 +46,10 @@ if ($Currenthostname -ne $HostName)
 $VerifySwitch=Get-VMSwitch
 Import-Module -Name Hyper-V
 
-if (!(Get-Partition -DriveLetter 'D' -ErrorAction SilentlyContinue ))
+if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue ))
     {
     Resize-Partition -DriveLetter 'C' -Size $OSpartition
-    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS
+    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
     Import-Module -Name netswitchteam
     New-Item -ItemType Directory -Path $MountPath
     if ($VerifySwitch.name -ne $SwitchName) 
@@ -65,21 +68,29 @@ if (!(Get-Partition -DriveLetter 'D' -ErrorAction SilentlyContinue ))
 
 For ($i=0; $i -lt $VMnames.count; $i++) {
 
-    $VHDPath = (“$MountPath" + "\" + $VMnames[$i] + ".vhdx")
-    $DataVHDPath = (“$MountPath" + "\" + $VMnames[$i] + "_data.vhdx")
+    $VMnamestemp = $VMnames[$i]
+    $VHDSizetemp = $VHDSize[$i]
+    $DataVHDSizetemp = $DataVHDSize[$i]
+    $RAMtemp = $RAM[$i]
+    $CPUtemp = $CPUcount[$i]
 
-    $VHDSizeGB = $Bytes * $VHDSize[$i]
-    $DataVHDSizeGB = $Bytes * $DataVHDSize[$i]
-    $RAMGB = $Bytes * $RAM[$i]
+    $VHDPath = (“$MountPath" + "\" + $VMnamestemp + ".vhdx")
+    $DataVHDPath = (“$MountPath" + "\" + $VMnamestemp + "_data.vhdx")
+
+    $VHDSizeGB = $Bytes * $VHDSizetemp
+    $DataVHDSizeGB = $Bytes * $DataVHDSizetemp
+    $RAMGB = $Bytes * $RAMTemp
 
         if (!(Get-Item $VHDPath -ErrorAction SilentlyContinue))
             {
-                New-VM -NewVHDPath $VHDPath -NewVHDSizeBytes $VHDSizeGB -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMNames[$i] -SwitchName $SwitchName
-                Set-VM -Name $VMNames[$i] -StaticMemory -ProcessorCount $CPUCount[$i]
+                New-VM -NewVHDPath $VHDPath -NewVHDSizeBytes $VHDSizeGB -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $SwitchName
+                Set-VM -Name $VMnamestemp -StaticMemory -ProcessorCount $CPUtemp
                 if ($DataVHDSizeGB -ge 1) 
                     {
                     New-VHD -Path $DataVHDPath -SizeBytes $DataVHDSizeGB -Dynamic
-                    Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMNames[$i] -Path $DataVHDPath
+                    Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $DataVHDPath
+                    Add-VMDvdDrive -VMName $VMnamestemp -Path $ISOPath
+                    Set-VMFirmware "$VMnamestemp" -FirstBootDevice $vmNetworkAdapter
                     }
             }
 
