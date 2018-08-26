@@ -1,104 +1,106 @@
-﻿#----- Initialization
+﻿########################
+##Hypervisor Variables##
+########################
+$HostName = “helio”
+$HostTimeZone = “Eastern Standard Time”
+$HostOSpartitionsize = "80"
+$HostManagementIP = "192.168.0.7"
+$HostManagementGateway = "192.168.0.1"
+$HostDNS = "192.168.0.10"
+$HostSwitchName = "HVSwitch"
+$HostVMMountPath = ”D:\VMStorage”
 
-#####move the ISO to top of order
-#####move autounattend to ISO root
+#############################
+##Virtual Machine Variables##
+#############################
+$VMnames = "addc","file","wsus"
+$VMHostISOPath = "D:\VMControl\iso\Win2016.iso" #this iso needs autounattend.xml in its root
+$VMRAM = 6,6,14
+$VMCPUCount = 2,2,4
+$VMVHDSize = 80,80,80
+$VMDataVHDSize = 0,2000,500
+$VMNetworkPortion = "192.168.0."
+$VMIP = "8", "9", "10"
+$VMSubnet = "255.255.255.0"
+$VMGateway = "192.168.0.1"
+$VMFeature = "AD-Domain-Services", "", "UpdateServices"
+$TemplateMode = $False #if true, turns template mode on. allows one better configuration in creating multiple vm's
+$TemplatePath = #C:\wherever\your\template\is.txt
 
-#----- Hypervisor Variables
-$TimeZone= “Eastern Standard Time”
-$HostName= “HELIO”
-$OSpartition = "80"
-$MgmtIP="192.168.0.7"
-$MgmtGateway="192.168.0.1"
-$DNS="192.168.0.10"
-$SwitchName="HVSwitch"
-$MountPath=”D:\VMStorage”
-
-#----- Variables for VM creation
-$VMnames="addc","file","wsus"
-$ISOPath="D:\VMControl\iso\Win2016.iso"
-$Unattend="D:\VMControl\autofiles\autounattend.xml"
-
-#----- Resources to be assigned to virtual machines, in order of $VMnames
-#-- All VM information is stored at D:\VirtualMachines, VM's with a second drive (DataVHD) will have a prefix of _data
-$RAM = 6,6,14
-$CPUCount = 2,2,4
-$VHDSize = 80,80,80
-$DataVHDSize = 0,2000,500
-
-#----- Controlling logic variables
-#-- if the desired hostname is set, a reboot has probably occured
-$Currenthostname = $env:computername
+#############
+##Constants##
+#############
 $Bytes = [math]::pow( 2, 30 )
-$OSpartition = $Bytes * $OSpartition
-$ExternalStorage = "F:\ISO\Windows2016.iso"
 
-#----- Hypervisor Configuration
-
-if ($Currenthostname -ne $HostName) 
+############################
+##Configure the Hypervisor##
+############################
+if ($env:computername -ne $HostName)
     {
-    TZUtil /s $TimeZone
+    TZUtil /s $HostTimeZone
     Rename-Computer -NewName $HostName -Confirm:$False
     Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:
     Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False Restart-Computer
     }
 
-#----- Initialization
-$VerifySwitch=Get-VMSwitch
-Import-Module -Name Hyper-V
-
-if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue ))
+if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue))
     {
-    Resize-Partition -DriveLetter 'C' -Size $OSpartition
-    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
     Import-Module -Name netswitchteam
-    New-Item -ItemType Directory -Path $MountPath
-    if ($VerifySwitch.name -ne $SwitchName) 
+    $HostOSpartitionsize = $Bytes * $HostOSpartitionsize
+    $VerifySwitch = Get-VMSwitch
+    Resize-Partition -DriveLetter 'C' -Size $HostOSpartitionsize
+    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
+    New-Item -ItemType Directory -Path $HostVMMountPath
+    if ($VerifySwitch.name -ne $HostSwitchName) 
         {
-        Set-Vmhost -VirtualHardDiskPath $MountPath -VirtualMachinePath $MountPath
+        Import-Module -Name Hyper-V
+        Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
         New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
-        New-VMSwitch -Name $SwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
-        New-NetIPAddress -InterfaceAlias “vEthernet (HVSwitch)” -IPAddress $MgmtIP -PrefixLength 24 -DefaultGateway $MgmtGateway
-        Set-DnsClientServerAddress -InterfaceAlias “vEthernet (HVSwitch)” -ServerAddresses $DNS
+        New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
+        New-NetIPAddress -InterfaceAlias “vEthernet (HVSwitch)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
+        Set-DnsClientServerAddress -InterfaceAlias “vEthernet (HVSwitch)” -ServerAddresses $HostDNS
         }
     }
 
-#Copy-Item -Path $ExternalStorage -Destination $ISOPath
-
-#----- Create Virtual Machines
+###########################
+##Create Virtual Machines##
+###########################
 
 For ($i=0; $i -lt $VMnames.count; $i++) {
 
+#----- Convert index to variable for programatic ease
     $VMnamestemp = $VMnames[$i]
-    $VHDSizetemp = $VHDSize[$i]
-    $DataVHDSizetemp = $DataVHDSize[$i]
-    $RAMtemp = $RAM[$i]
-    $CPUtemp = $CPUcount[$i]
+    $VHDSizetemp = $VMVHDSize[$i]
+    $DataVHDSizetemp = $VMDataVHDSize[$i]
+    $RAMtemp = $VMRAM[$i]
+    $CPUtemp = $VMCPUCount[$i]
+    
+#----- Name drives in a standard format
+    $VHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + ".vhdx")
+    $DataVHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + "_data.vhdx")
 
-    $VHDPath = (“$MountPath" + "\" + $VMnamestemp + ".vhdx")
-    $DataVHDPath = (“$MountPath" + "\" + $VMnamestemp + "_data.vhdx")
-
+#----- Some quick math to convert from bytes to Gb
     $VHDSizeGB = $Bytes * $VHDSizetemp
     $DataVHDSizeGB = $Bytes * $DataVHDSizetemp
     $RAMGB = $Bytes * $RAMTemp
 
         if (!(Get-Item $VHDPath -ErrorAction SilentlyContinue))
             {
-                New-VM -NewVHDPath $VHDPath -NewVHDSizeBytes $VHDSizeGB -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $SwitchName
+                New-VM -NewVHDPath $VHDPath -NewVHDSizeBytes $VHDSizeGB -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Set-VM -Name $VMnamestemp -StaticMemory -ProcessorCount $CPUtemp
                 if ($DataVHDSizeGB -ge 1) 
                     {
                     New-VHD -Path $DataVHDPath -SizeBytes $DataVHDSizeGB -Dynamic
                     Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $DataVHDPath
-                    Add-VMDvdDrive -VMName $VMnamestemp -Path $ISOPath
-                    Set-VMFirmware "$VMnamestemp" -FirstBootDevice $vmNetworkAdapter
+                    Add-VMDvdDrive -VMName $VMnamestemp -Path $HostISOPath
+                    $VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
+                    Set-VMFirmware "$VMnamestemp" -FirstBootDevice $VMDvdDrive
+                    Disable-VMIntegrationService -Name 'Time Synchronization' -ComputerName $HostName -VMName $VMnamestemp
+                    Start-VM -Name $VM
                     }
             }
-
 }
 
-#Set-VMDvdDrive -VMName $VM -Path $ISOPath
-
-#Disable-VMIntegrationService -name 'Time Synchronization' -VMName *
 
 ########################
 <#
