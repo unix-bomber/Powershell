@@ -1021,18 +1021,18 @@ if ($Service) {                 # Run the service
 
 function Run-pfts {
 $Global:LocalFTPClient = "C:\Program Files (x86)\WinSCP"
-$Parentfolder = "C:\pfts"
-$Loggingfolder = "C:\pfts\log"
-$Global:LoggingfolderPulling = "C:\pfts\log\pulling"
-$Global:LoggingfolderPushing = "C:\pfts\log\pushing"
+$Parentfolder = "D:\pfts"
+$Loggingfolder = "D:\pfts\log"
+$Global:LoggingfolderPulling = "D:\pfts\log\pulling"
+$Global:LoggingfolderPushing = "D:\pfts\log\pushing"
 
 $LocalFriendlyPulling = "coastguard"
-$LocalParentFolderPulling = "C:\pfts\pulling"
+$LocalParentFolderPulling = "D:\pfts\pulling"
 $Global:LocalChildFolderPulling = "$LocalParentFolderPulling\originators"
 $Global:LocalConfFolderPulling = "$LocalParentFolderPulling\conf"
 
 $LocalFriendlyPushing = "coastguard"
-$LocalParentFolderPushing = "C:\pfts\pushing"
+$LocalParentFolderPushing = "D:\pfts\pushing"
 $Global:LocalChildFolderPushing =  "$LocalParentFolderPushing\destination"
 $Global:LocalConfFolderPushing = "$LocalParentFolderPushing\conf"
 
@@ -1357,14 +1357,14 @@ $PushChildScriptBlock = @'
 $DestinationFTPType = "sftp"#required specify if you want to use scp sftp ftps s3 Ex. "scp" 
 $DestinationUsername = "pfts"#required username of account used to connect to data source Ex. "username" s3 use your public api key
 $DestinationAuth = "password"#required, valid values are "password", "sshkey" or "certificate" Ex. "password" s3 use password
-$DestinationSecurepassword = "12qwaszx!@QWASZX" #for s3 use secret key the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
+$DestinationSecurepassword = '123qwe!@#QWE' #for s3 use secret key the GPO setting Network Access: Do not allow storage of passwords and credentials for network authentication must be set to Disabled (or not configured), or a reboot will render all passwords unaccessable Ex. "Password
 $DestinationSSHkey = $null#if using ssh keys, specify full path to key
 $DestinationSecureSSHkeyPassword = $null#password of ssh key, if used
-$DestinationFingerprint = "ssh-ed25519 256 hmk1czu5R0VTtjno/1fGeTMTQRaaMKg86nJZHsKnZpE="#required, unless s3. You can obtain this using the winscp gui Ex. "ssh-rsa 2048 xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+$DestinationFingerprint = "ssh-rsa 2048 123kjhYDBEu43i8skwio&*0jsaouxisme/1="#required, unless s3. You can obtain this using the winscp gui Ex. "ssh-rsa 2048 xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
 $DestinationClientCert = $null#if using FTPS, and required you may specify a certificate here
 $DestinationTLSClientCert = $null#required if using certs full path to client certificate path
-$DestinationIP = "192.168.7.6"#required, ip address or hostname of data source, s3 use the full path to your bucket, do not use DestinationDir
-$DestinationDir = "/home/pfts/push/coastguard"#required, directory path ex. "/home/pfts/push/coastguard"
+$DestinationIP = "192.168.0.2"#required, ip address or hostname of data source, s3 use the full path to your bucket, do not use DestinationDir
+$DestinationDir = "/home/pfts/coastguard"#required, directory path ex. "/home/pfts/push/coastguard"
 ##########################
 ##Data formating options##
 ##########################
@@ -1372,18 +1372,25 @@ $LocalZip = $null#zips files prior to sending. Encouraged for thousands of 'smal
 $LocalZipQuantity = $null#required if $LocalZip is true. Specify quantity of files to zip, suggested size of 500 ex. "500"
 $LocalUnzip = $null#this option unzips files prior to sending to the distant end, specify $True to use.
 $LocalFiletype = "*.xml"#required this will collect only files by file extension ex. "*.xml" "*.jpg" select "*" to collect regardless of filetype
-$LocalPassthrough = $True#this option allows one to pass files from the 'pulling' folder directly to the corresponding pushing folder. the only setup required is to name the friendly pushing the same as the friendly pulling, and to specify this value $True
+$LocalPassthrough = $False#this option allows one to pass files from the 'pulling' folder directly to the corresponding pushing folder. the only setup required is to name the friendly pushing the same as the friendly pulling, and to specify this value $True
 $DestinationOS = "Linux"#specify Linux or Windows, option not implemented don't use
 ##############################
 ##Rudimentary Alert settings##
 ##############################
 $SMTPAlert = $True #turns the alert on or off
 $SMTPAlertTime = "60" #if data hasn't been transfered in 'x' minutes, send an email 
-$SMTPServer = "192.168.0.2"#IP address or hostname of mail server
+$SMTPServer = "192.168.0.3"#IP address or hostname of mail server
 $SMTPPort = "25"#port to connect with
-$SMTPFrom = "SMTPalert@gmail.com" #use the format x@domain
-$SMTPTo = "SMTPReceive@gmail.com" #use the format x@domain
+$SMTPFrom = "pfts@gmail.com" #use the format x@domain
+$SMTPTo = "pfts@gmail.com" #use the format x@domain
+$SMTPSubject = "It's broke!"# this will automatically provide the name of the datafeed at the end
 $SMTPPriority = "High" #use "High" "Medium" or "Low"
+######################
+##Lockout Prevention##
+######################
+$AccountLockPrevention = $True #if true, prevents feed from running if unable to authenticate
+$AccountLockFrequency = "10" #generate log this often in minutes
+$AccountLockMail = $True #if true, sends an e-mail using the Rudimentary Alert settings
 ########################################################
 ##Don't go past here unless you know what you're doing##
 ########################################################
@@ -1523,28 +1530,58 @@ if ($LocalZip -and $LocalUnzip -eq "$True")
 #################################
 ##End of connection being built##
 #################################
+if (!(Test-Path -Path "$Using:LoggingfolderPushing\$basename\$currentdate\"))
+                                    {
+                                    New-Item -Path "$Using:LoggingfolderPushing\$basename\$currentdate\" -ItemType directory
+                                    }
 
 ############
 ##Alerting##
 ############
+$lastmail = Get-EventLog -LogName Application -InstanceId "8888" -Newest 1 -Message "*$basename*"
 if ($SMTPAlert -eq "$True")
     {
-    $lastlog = (Get-ChildItem -Path $Using:LoggingfolderPushing\$basename\$currentdate | select -Last 1).LastWriteTime
-    if ($lastlog.count -lt "2")
+    $lastlog = (Get-ChildItem -Path $Using:LoggingfolderPushing\$basename\$currentdate | select -last 1 -ErrorAction SilentlyContinue)
+    if (!(Get-ChildItem -Path $Using:LoggingfolderPushing\$basename\$currentdate -ErrorAction SilentlyContinue)) 
         {
-        $lastdir = Get-ChildItem -Path $Using:LoggingfolderPushing\$basename | select -Last 1
-        $lastfile = Get-ChildItem -Path $lastdir.FullName | select -Last 1
-            if ($lastfile -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
-                {
-                Send-MailMessage -Port $SMTPPort -From $SMTPFrom -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
-                Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
-                }
+        $lastlog = (Get-ChildItem -Path $Using:LoggingfolderPushing\$basename | select -Last 1)
         }
+            if ($lastlog.LastWriteTime -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+                {
+                if ($lastmail.TimeGenerated -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+                    {
+                    Send-MailMessage -Port $SMTPPort -From $SMTPFrom -subject "$SMTPSubject $Basename" -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
+                    Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
+                    }
+                }
+    }
 
     elseif ($lastlog -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
         {
-        Send-MailMessage -Port $SMTPPort -From $SMTPFrom -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
-        Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
+        if ($lastmail -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+            {
+            Send-MailMessage -Port $SMTPPort -From $SMTPFrom -subject $SMTPSubject -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain feed $basename on server $env:Computername hasn't received any data in $SMTPAlertTime minutes"
+            Write-EventLog -LogName "Application" -Source "pfts" -EventID 8888 -EntryType Information -Message "Error: $basename hasn't received any data in $SMTPAlertTime minutes" -Category 1 -RawData 10,20
+            }
+        }
+######################
+##Lockout prevention##
+######################
+$lastevent = Get-EventLog -LogName Application -InstanceId "9999" -Newest 1 -Message "*$basename*"
+if ($AccountLockPrevention = "$True")
+    {
+    $lastlog = (Get-ChildItem -Path $Using:LoggingfolderPushing\$basename\$currentdate | select -last 1 -ErrorAction SilentlyContinue)
+    if ($lastlog | Get-Content -Tail 1 -ilike "*Unable to authenticate*")
+        {
+        if ((Get-ChildItem -Path $Using:LocalConfFolderPushing\*$Basename.txt).LastWriteTime -gt $(Get-Date).AddSeconds(-30))
+            {
+            if ($lastevent.TimeGenerated -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
+                {
+                Write-EventLog -LogName "Application" -Source "pfts" -EventID 9999 -EntryType Information -Message "Error: The account for $basename can't authenticate!" -Category 1 -RawData 10,20
+                exit 1
+                }
+            exit 1
+            }
         }
     }
 
@@ -1576,7 +1613,7 @@ if ($LocalPassthrough -eq "$True")
                             $session = New-Object WinSCP.Session
                             $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                             $transferOptions = New-Object WinSCP.TransferOptions
-                            $transferOptions.FileMask = "*>0"
+                            $transferOptions.FileMask = "*>0K"
                             $session.Open($sessionOptions)
                             $suffix = "_part"
                             $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound" | Sort-Object -Property Length | select -Last 1 | where Length -gt 1 ).count
@@ -1619,7 +1656,7 @@ if ($LocalPassthrough -eq "$True")
                                 $session = New-Object WinSCP.Session
                                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                                 $transferOptions = New-Object WinSCP.TransferOptions
-                                $transferOptions.FileMask = "*>0"
+                                $transferOptions.FileMask = "*>0K"
                                 $session.Open($sessionOptions)
                                 $suffix = "_part"
                                 $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound").count
@@ -1663,7 +1700,7 @@ if ($LocalPassthrough -eq "$True")
                                 $session = New-Object WinSCP.Session
                                 $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                                 $transferOptions = New-Object WinSCP.TransferOptions
-                                $transferOptions.FileMask = "*>0"
+                                $transferOptions.FileMask = "*>0K"
                                 $session.Open($sessionOptions)
                                 $suffix = "_part"
                                 $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPulling\$Basename\inbound").count
@@ -1708,7 +1745,7 @@ if ($LocalPassthrough -ne "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.FileMask = "*>0"
+                    $transferOptions.FileMask = "*>0K"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" -exclude "*.zip" | Sort-Object -Property Length | where Length -gt 1 ).count
@@ -1751,7 +1788,7 @@ if ($LocalPassthrough -ne "$True")
                     $session = New-Object WinSCP.Session
                     $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                     $transferOptions = New-Object WinSCP.TransferOptions
-                    $transferOptions.FileMask = "*>0"
+                    $transferOptions.FileMask = "*>0K"
                     $session.Open($sessionOptions)
                     $suffix = "_part"
                     $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1 ).count
@@ -1789,7 +1826,7 @@ if ($LocalPassthrough -ne "$True")
                         $session = New-Object WinSCP.Session
                         $session.SessionLogPath = "$Using:LoggingfolderPushing\$basename\$currentdate\$timestamp.txt"
                         $transferOptions = New-Object WinSCP.TransferOptions
-                        $transferOptions.FileMask = "*>0"
+                        $transferOptions.FileMask = "*>0K"
                         $session.Open($sessionOptions)
                         $suffix = "_part"
                         $currentbatchtotal = (Get-ChildItem -Path "$Using:LocalChildFolderPushing\$Basename\outbound" | Sort-Object -Property Length | where Length -gt 1 ).count
@@ -1948,3 +1985,4 @@ Exit 1
 #       \
 #    ~~~~-\_ /~~=._         ~~~~~~~~~~~             ~~~~~~~~~~~~~
 #~~~~      =/       ~~~~~~~~ ~~~~~~    ~~~~~~~~~~~~~             ~~~~~
+
