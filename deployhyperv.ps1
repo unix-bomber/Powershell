@@ -104,9 +104,10 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                 New-VM -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $VHDPath
                 Set-VM -Name $VMnamestemp -StaticMemory -ProcessorCount $CPUtemp
-                $VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
-                Add-VMDvdDrive -VMName $VMnamestemp -Path $VMHostISOPath
-                Set-VMFirmware "$VMnamestemp" -FirstBootDevice "HardDiskDrive"
+                #$VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
+                #Add-VMDvdDrive -VMName $VMnamestemp -Path $VMHostISOPath
+                $Drivefirst = Get-VMHardDiskDrive -VMName $VMnamestemp # change
+                Set-VMFirmware "$VMnamestemp" -FirstBootDevice $Drivefirst
                 Disable-VMIntegrationService -Name 'Time Synchronization' -ComputerName $HostName -VMName $VMnamestemp
                 # ----- Creates a second HDD for data & external facing stuff, configures VM for installation
                 if ($DataVHDSizeGB -ge 1) 
