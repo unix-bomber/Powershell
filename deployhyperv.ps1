@@ -9,6 +9,7 @@ $HostManagementGateway = "192.168.0.1"
 $HostDNS = "192.168.0.10"
 $HostSwitchName = "HVSwitch"
 $HostVMMountPath = ”D:\VMStorage”
+$HostConfigure = $True #If true, configure the hypervisor
 
 #############################
 ##Virtual Machine Variables##
@@ -35,33 +36,40 @@ $Bytes = [math]::pow( 2, 30 )
 ############################
 ##Configure the Hypervisor##
 ############################
-if ($env:computername -ne $HostName)
+if ($HostConfigure -eq "$True")
     {
-    TZUtil /s $HostTimeZone
-    Rename-Computer -NewName $HostName -Confirm:$False
-    Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:
-    Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False Restart-Computer
-    }
-
-if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue))
-    {
-    Import-Module -Name netswitchteam
-    $HostOSpartitionsize = $Bytes * $HostOSpartitionsize
-    $VerifySwitch = Get-VMSwitch
-    Resize-Partition -DriveLetter 'C' -Size $HostOSpartitionsize
-    New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
-    New-Item -ItemType Directory -Path $HostVMMountPath
-    if ($VerifySwitch.name -ne $HostSwitchName) 
+    # ----- I determine if the hypervisor needs configuration by if the hostname is correct or not
+    if ($env:computername -ne $HostName)
         {
-        Import-Module -Name Hyper-V
-        Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
-        New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
-        New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
-        New-NetIPAddress -InterfaceAlias “vEthernet (HVSwitch)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
-        Set-DnsClientServerAddress -InterfaceAlias “vEthernet (HVSwitch)” -ServerAddresses $HostDNS
+        # ----- Set TimeZone
+        TZUtil /s $HostTimeZone
+        Rename-Computer -NewName $HostName -Confirm:$False
+        # ----- Register product key
+        Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:
+        Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False Restart-Computer
         }
-    }
 
+    # ----- If there's no partition for data storage and external facing 'stuff' we probably need hyper-v configuration
+    if (!(Get-Partition -DriveLetter 'E' -ErrorAction SilentlyContinue))
+        {
+        Import-Module -Name netswitchteam
+        $HostOSpartitionsize = $Bytes * $HostOSpartitionsize
+        $VerifySwitch = Get-VMSwitch
+        Resize-Partition -DriveLetter 'C' -Size $HostOSpartitionsize
+        New-Partition -DiskNumber 0 -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -Force
+        New-Item -ItemType Directory -Path $HostVMMountPath
+        # ----- If Virtual switch doesn't exist, create it & conigure
+        if ($VerifySwitch.name -ne $HostSwitchName) 
+            {
+            Import-Module -Name Hyper-V
+            Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
+            New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
+            New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
+            New-NetIPAddress -InterfaceAlias “vEthernet (HVSwitch)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
+            Set-DnsClientServerAddress -InterfaceAlias “vEthernet (HVSwitch)” -ServerAddresses $HostDNS
+            }
+        }
+}
 ###########################
 ##Create Virtual Machines##
 ###########################
@@ -88,19 +96,22 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
             {
                 New-VM -NewVHDPath $VHDPath -NewVHDSizeBytes $VHDSizeGB -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Set-VM -Name $VMnamestemp -StaticMemory -ProcessorCount $CPUtemp
+                $VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
+                Add-VMDvdDrive -VMName $VMnamestemp -Path $VMHostISOPath
+                Set-VMFirmware "$VMnamestemp" -FirstBootDevice $VMDvdDrive
+                Disable-VMIntegrationService -Name 'Time Synchronization' -ComputerName $HostName -VMName $VMnamestemp
+                # ----- Creates a second HDD for data & external facing stuff, configures VM for installation
                 if ($DataVHDSizeGB -ge 1) 
                     {
                     New-VHD -Path $DataVHDPath -SizeBytes $DataVHDSizeGB -Dynamic
                     Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $DataVHDPath
-                    Add-VMDvdDrive -VMName $VMnamestemp -Path $HostISOPath
-                    $VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
-                    Set-VMFirmware "$VMnamestemp" -FirstBootDevice $VMDvdDrive
-                    Disable-VMIntegrationService -Name 'Time Synchronization' -ComputerName $HostName -VMName $VMnamestemp
-                    Start-VM -Name $VM
                     }
+                Start-VM -Name $VM
             }
 }
 
+#Hash for my sysprepped image
+#F07793BC4B720E85B2B0BC7B82FF632D70D0F2F41F0706EDFF84440AC1F28978
 
 ########################
 <#
