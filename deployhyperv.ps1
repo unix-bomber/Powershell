@@ -98,13 +98,15 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                 Copy-Item -path $VMTemplate -Destination $VHDPath
                 $MountedSysprepDrive = Mount-VHD -Path $VHDPath -Passthru | Get-Disk | Get-Partition | Get-Volume | where{$_.FileSystemLabel -ne "Recovery"} | select DriveLetter -ExpandProperty DriveLetter
                 Copy-Item -Path $VMUnattend -Destination ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml = Get-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml | Foreach-Object { $_ -replace '!ComputerName!', $serverName } | Set-Content $unattendedFileLocation
                 Dismount-Vhd -Path $VHDPath
                 New-VM -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $VHDPath
                 Set-VM -Name $VMnamestemp -StaticMemory -ProcessorCount $CPUtemp
                 $VMDvdDrive = Get-VMDvdDrive -VMName $VMnamestemp
                 Add-VMDvdDrive -VMName $VMnamestemp -Path $VMHostISOPath
-                Set-VMFirmware "$VMnamestemp" -FirstBootDevice $VHDPath
+                Set-VMFirmware "$VMnamestemp" -FirstBootDevice "HardDiskDrive"
                 Disable-VMIntegrationService -Name 'Time Synchronization' -ComputerName $HostName -VMName $VMnamestemp
                 # ----- Creates a second HDD for data & external facing stuff, configures VM for installation
                 if ($DataVHDSizeGB -ge 1) 
@@ -112,7 +114,7 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                     New-VHD -Path $DataVHDPath -SizeBytes $DataVHDSizeGB -Dynamic
                     Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $DataVHDPath
                     }
-                Start-VM -Name $VM
+                Start-VM -Name $VMnamestemp
             }
 }
 
