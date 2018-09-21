@@ -123,6 +123,7 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
 #F07793BC4B720E85B2B0BC7B82FF632D70D0F2F41F0706EDFF84440AC1F28978
 
 #Get-VM -Name windowstest | Select-Object -ExpandProperty NetworkAdapters | Select-Object VMName,IPAddresses
+#invoke-command -ComputerName "192.168.0.53" -Credential "windowstest1\Administrator" -ScriptBlock {shutdown -s -t 0}
 
 ########################
 <#
