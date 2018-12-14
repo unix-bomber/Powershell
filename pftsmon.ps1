@@ -1,7 +1,4 @@
-﻿#If any file in a,b,c older than 30 minutes, alert
-#If can't reach computer, alert
-
-##############################
+﻿##############################
 ##    Install Information   ##
 ##############################
 $PShellmonInstallDir = "C:\PShellmon"
@@ -12,7 +9,7 @@ $ManifestLocation = "$PShellmonInstallDir\manifests" #Information on what occure
 ## Configuration Information ##
 ###############################
 $MonSecurepassword = "whateverpassword" #Password to connect with (REMOVE AFTER FIRST RUN)
-$MonRemoteUser = "someuser" #User to connect as
+$MonRemoteUser = "addomain\someuser" #User to connect as
 $Global:MonDirectory = "C:\directory1", "C:\directory2", "C:\directory3" #Directories to monitor
 $MonClientServer = "192.168.0.1", "192.168.0.2" #Servers to monitor
 $Global:MonRestartInterval = "10" #if files are older than 5 minutes restart pfts
@@ -57,16 +54,14 @@ catch {
 try {
     if (!(test-path "$PasswordLocation\mon_pass.txt"))
         {
-            {
-            $MonSecurepassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$PShellmonInstallDir\mon_pass.txt"
-            $DecryptedSecurepassword = Get-Content "$PShellmonInstallDir\mon_pass.txt" | ConvertTo-SecureString
-            }
+            $MonSecurepassword | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Out-File "$PasswordLocation\mon_pass.txt"
+            $DecryptedSecurepassword = Get-Content "$PasswordLocation\mon_pass.txt" | ConvertTo-SecureString
         }
         else
             {
-            if (test-path "$PShellmonInsatllDir\mon_pass.txt")
+            if (test-path "$PasswordLocation\mon_pass.txt")
                 {
-                $DecryptedSecurepassword = Get-Content "$Using:LocalConfFolderPulling\mon_pass.txt" | ConvertTo-SecureString
+                $DecryptedSecurepassword = Get-Content "$PasswordLocation\mon_pass.txt" | ConvertTo-SecureString
                 }
             }
     }
@@ -131,7 +126,7 @@ if ($SMTPAlert -eq "$True")
                 {
                 if ($lastmail.TimeGenerated -lt $(Get-Date).AddMinutes(-$SMTPAlertTime))
                     {
-                    Send-MailMessage -Port $SMTPPort -From $SMTPFrom -subject "$SMTPSubject ESTA & PNR FAILURE !contact admins!" -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Feeds on server $MonClientServer hasn't received any data in $SMTPAlertTime minutes ***CALL THE CROSS DOMAIN TEAM IMMEDIATELY***"
+                    Send-MailMessage -Port $SMTPPort -From $SMTPFrom -subject "$SMTPSubject PFTS FAILURE !contact admins!" -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Feeds on server $MonClientServer hasn't received any data in $SMTPAlertTime minutes ***CALL THE CROSS DOMAIN TEAM IMMEDIATELY***"
                     Write-EventLog -LogName "PSmon" -Source "PSmon" -EventID 3000 -EntryType Information -Message "Error: Something wrong, mailed admin" -Category 1 -RawData 10,20
                     }
                 }
