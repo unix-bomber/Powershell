@@ -1,51 +1,59 @@
-﻿########################
-##Hypervisor Variables##
-########################
+﻿#############################
+## Hypervisor OS Variables ##
+#############################
 $HostName = “helio”
 $HostTimeZone = “Eastern Standard Time”
 $HostOSpartitionsize = "80"
 $HostManagementIP = "192.168.0.7"
 $HostManagementGateway = "192.168.0.1"
 $HostDNS = "192.168.0.10"
+$HostProductKey = "" #Put a product key here, if you want to apply it
 $HostSwitchName = "HVSwitch"
 $HostVMMountPath = ”E:\VMStorage”
-$HostConfigure = $True #If true, configure the hypervisor
-$ProductKey = "PRODUCTKEY"
-$AttachToExistingActiveDirectory = $True #If true, join to domain. If False, don't join to domain
+$HostConfigure = $True #If true, apply the above settings install&configure hyper-v
+$AttachToExistingActiveDirectory = $True #If true, join to existing domain. If False, don't join to domain
+
+#############################
+## Existing AD Credentials ##
+#############################
+$DomainAdmin = "domain_admin"
+$DomainAdminPassword = "password" | ConvertTo-SecureString -AsPlainText -Force
+$DomainName = "domain"
+$LocalAdmin = "local_admin"
+$LocalAdminPassword = "password" | ConvertTo-SecureString -AsPlainText -Force
 
 ################################
 ## Failover Cluster Variables ##
 ################################
 $FailoverCluster = $True #If true, configure failover cluster variables
 
-
 ###############################
 ## Virtual Machine Variables ##
 ###############################
 
 ## VM Location and Identification
-$VMnames = "addc","file","wsus"
+$VMnames = "addc", "file", "wsus", "wds"
 $VMTemplate = "E:\Hyper-V\windowsimage.vhdx"
 $VMUnattend = "E:\Unattend.xml"
-$VMHostISOPath = "E:\VMControl\iso\Win2016.iso" #this iso needs autounattend.xml in its root
+$VMProductKey = "key1", "key2", "key3", "key4"
 
 ## VM Resource Allocation
-$VMRAM = 6,6,14
-$VMCPUCount = 2,2,4
-$VMDataVHDSize = 0,2000,500
+$VMRAM = 6,6,14,6
+$VMCPUCount = 2,2,4,2
+$VMDataVHDSize = 0,2500,500,500
 
 ## VM Network Information
 $VMNetworkPortion = "192.168.0."
-$VMIP = "8", "9", "10"
+$VMIP = "8", "9", "10", "11"
 $VMSubnet = "255.255.255.0"
 $VMGateway = "192.168.0.1"
-$VMFeature = "AD-Domain-Services", "", "UpdateServices"
+$VMFeature = "AD-Domain-Services", "", "UpdateServices",
 
 ## Credentials & Ownership
 #Computer name is defined in 'VMnames'
-$LocalAdminName = "xAdministrator"
-$LocalAdminPassword = "GenericPassword"
-$LocalOrganization = "Ghowstown"
+$VMLocalAdminName = "xAdministrator"
+$VMLocalAdminPassword = "GenericPassword" | ConvertTo-SecureString -AsPlainText -Force
+$VMLocalOrganization = "Ghowstown"
 
 #############
 ##Constants##
@@ -55,19 +63,30 @@ $Bytes = [math]::pow( 2, 30 )
 ############################
 ##Configure the Hypervisor##
 ############################
+
+$DomCred = New-Object System.Management.Automation.PSCredential -ArgumentList $DomainAdmin,$DomainAdminPassword
+$LocCred = New-Object System.Management.Automation.PSCredential -ArgumentList $LocalAdmin,$LocalAdminPassword
+
 if ($HostConfigure -eq "$True")
     {
     # ----- I determine if the hypervisor needs configuration by if the hostname is correct or not
     if ($env:computername -ne $HostName)
         {
-        # ----- Set TimeZone
         TZUtil /s $HostTimeZone
         Rename-Computer -NewName $HostName -Confirm:$False
         # ----- Register product key
-        Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:$ProductKey
-        Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False Restart-Computer
+        if ($ProductKey.count -gt 1)
+          {
+          Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:$ProductKey
+          }
+        Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False
+        # ----- Join AD domain
+        if ($env:userdomain -ne $HostDomain)
+          {
+          Add-Computer -ComputerName $HostName -LocalCredential "$LocCred" -DomainName "Domain02" -Credential $Cred -Restart -Force
+          }
+        Restart-Computer -force
         }
-
 ###fixme### the new if statement below, has to be wrapped in 'if $FailoverCluster is true, DO NOT do this'
 ###fixme### this if statement needs to be replaced with 'if windows-feature hyper-v is present, DO NOT do this'
     # ----- If there's no partition for data storage and external facing 'stuff' we probably need hyper-v configuration
@@ -86,8 +105,8 @@ if ($HostConfigure -eq "$True")
             Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
             New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
             New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
-            New-NetIPAddress -InterfaceAlias “vEthernet (HVSwitch)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
-            Set-DnsClientServerAddress -InterfaceAlias “vEthernet (HVSwitch)” -ServerAddresses $HostDNS
+            New-NetIPAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
+            Set-DnsClientServerAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -ServerAddresses $HostDNS
             }
         }
 
@@ -124,9 +143,9 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                 Copy-Item -Path $VMUnattend -Destination ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 $xml = Get-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 $xml | Foreach-Object { $_ -replace '!ComputerName!', $VMNamesTemp } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
-                $xml | Foreach-Object { $_ -replace '!organization!', $LocalOrganization } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
-                $xml | Foreach-Object { $_ -replace '!password!', $LocalAdminPassword } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
-                $xml | Foreach-Object { $_ -replace '!administrator!', $LocalAdminName } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml | Foreach-Object { $_ -replace '!organization!', $VMLocalOrganization } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml | Foreach-Object { $_ -replace '!password!', $VMLocalAdminPassword } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml | Foreach-Object { $_ -replace '!administrator!', $VMLocalAdminName } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 Dismount-Vhd -Path $VHDPath
                 New-VM -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $VHDPath
