@@ -1,7 +1,7 @@
 ﻿###############################
 ## Configuration Information ##
 ###############################
-$NotesDir = "C:\Users\$env:USERNAME\Documents\bucket_notes"
+$NotesDir = "C:\Users\$env:USERNAME\Documents\GitHub\Notes"
 $NotesHotDuration = "10" #Days to stay in bucket
 $NotesWarmDuration = "20"
 $NotesColdDuration = "30"
