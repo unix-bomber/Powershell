@@ -1,17 +1,18 @@
-﻿#############################
+#############################
 ## Hypervisor OS Variables ##
 #############################
 $HostName = “helio”
 $HostTimeZone = “Eastern Standard Time”
 $HostOSpartitionsize = "80"
 $HostManagementIP = "192.168.0.7"
+$HostNetPrefix = "24"
 $HostManagementGateway = "192.168.0.1"
 $HostDNS = "192.168.0.10"
 $HostProductKey = "" #Put a product key here, if you want to apply it
 $HostSwitchName = "HVSwitch"
 $HostVMMountPath = ”E:\VMStorage”
 $HostConfigure = $True #If true, apply the above settings install&configure hyper-v
-$AttachToExistingActiveDirectory = $True #If true, join to existing domain. If False, don't join to domain
+$AttachToExistingActiveDirectory = $True #If true, join to existing domain using credentials below. If False, don't join to domain
 
 #############################
 ## Existing AD Credentials ##
@@ -19,8 +20,8 @@ $AttachToExistingActiveDirectory = $True #If true, join to existing domain. If F
 $DomainAdmin = "domain_admin"
 $DomainAdminPassword = "password" | ConvertTo-SecureString -AsPlainText -Force
 $DomainName = "domain"
-$LocalAdmin = "local_admin"
-$LocalAdminPassword = "password" | ConvertTo-SecureString -AsPlainText -Force
+$HostLocalAdmin = "local_admin"
+$HostLocalAdminPassword = "password" | ConvertTo-SecureString -AsPlainText -Force
 
 ################################
 ## Failover Cluster Variables ##
@@ -31,29 +32,36 @@ $FailoverCluster = $True #If true, configure failover cluster variables
 ## Virtual Machine Variables ##
 ###############################
 
-## VM Location and Identification
+# ----- VM Location and Identification
 $VMnames = "addc", "file", "wsus", "wds"
 $VMTemplate = "E:\Hyper-V\windowsimage.vhdx"
 $VMUnattend = "E:\Unattend.xml"
 $VMProductKey = "key1", "key2", "key3", "key4"
 
-## VM Resource Allocation
+# ----- VM Resource Allocation
 $VMRAM = 6,6,14,6
 $VMCPUCount = 2,2,4,2
 $VMDataVHDSize = 0,2500,500,500
 
-## VM Network Information
+# ----- VM Network Information
 $VMNetworkPortion = "192.168.0."
 $VMIP = "8", "9", "10", "11"
-$VMSubnet = "255.255.255.0"
+$VMNetPrefix = "24"
 $VMGateway = "192.168.0.1"
-$VMFeature = "AD-Domain-Services", "", "UpdateServices",
+$VMFeature = "AD-Domain-Services", "", "UpdateServices", "WDS"
 
-## Credentials & Ownership
+# ----- Credentials & Ownership
 #Computer name is defined in 'VMnames'
 $VMLocalAdminName = "xAdministrator"
 $VMLocalAdminPassword = "GenericPassword" | ConvertTo-SecureString -AsPlainText -Force
 $VMLocalOrganization = "Ghowstown"
+
+#####################################################
+## Active Directory Feature Installation Variables ##
+#####################################################
+$SafeModeAdministratorPassword = "password"  | ConvertTo-SecureString -AsPlainText -Force
+$NewDomainName = "ghowstown"
+$ExternalDNS = "9.9.9.9"
 
 #############
 ##Constants##
@@ -65,7 +73,7 @@ $Bytes = [math]::pow( 2, 30 )
 ############################
 
 $DomCred = New-Object System.Management.Automation.PSCredential -ArgumentList $DomainAdmin,$DomainAdminPassword
-$LocCred = New-Object System.Management.Automation.PSCredential -ArgumentList $LocalAdmin,$LocalAdminPassword
+$LocCred = New-Object System.Management.Automation.PSCredential -ArgumentList $HostLocalAdmin,$HostLocalAdminPassword
 
 if ($HostConfigure -eq "$True")
     {
@@ -83,7 +91,7 @@ if ($HostConfigure -eq "$True")
         # ----- Join AD domain
         if ($env:userdomain -ne $HostDomain)
           {
-          Add-Computer -ComputerName $HostName -LocalCredential "$LocCred" -DomainName "Domain02" -Credential $Cred -Restart -Force
+          Add-Computer -ComputerName $HostName -LocalCredential "$LocCred" -DomainName "$DomainName" -Credential $Cred -Restart -Force
           }
         Restart-Computer -force
         }
@@ -105,7 +113,7 @@ if ($HostConfigure -eq "$True")
             Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
             New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
             New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
-            New-NetIPAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -IPAddress $HostManagementIP -PrefixLength 24 -DefaultGateway $HostManagementGateway
+            New-NetIPAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -IPAddress $HostManagementIP -PrefixLength $HostNetPrefix -DefaultGateway $HostManagementGateway
             Set-DnsClientServerAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -ServerAddresses $HostDNS
             }
         }
@@ -121,17 +129,17 @@ if ($HostConfigure -eq "$True")
 
 For ($i=0; $i -lt $VMnames.count; $i++) {
 
-#----- Convert index to variable for programatic ease
+# ----- Convert index to variable for programatic ease
     $VMnamestemp = $VMnames[$i]
     $DataVHDSizetemp = $VMDataVHDSize[$i]
     $RAMtemp = $VMRAM[$i]
     $CPUtemp = $VMCPUCount[$i]
 
-#----- Name drives in a standard format
+# ----- Name drives in a standard format
     $VHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + ".vhdx")
     $DataVHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + "_data.vhdx")
 
-#----- Some quick math to convert from bytes to Gb
+# ----- Some quick math to convert from bytes to Gb
     $DataVHDSizeGB = $Bytes * $DataVHDSizetemp
     $RAMGB = $Bytes * $RAMTemp
 
@@ -146,6 +154,7 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
                 $xml | Foreach-Object { $_ -replace '!organization!', $VMLocalOrganization } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 $xml | Foreach-Object { $_ -replace '!password!', $VMLocalAdminPassword } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 $xml | Foreach-Object { $_ -replace '!administrator!', $VMLocalAdminName } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+                $xml | Foreach-Object { $_ -replace '!productkey!', $VMProductKey } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
                 Dismount-Vhd -Path $VHDPath
                 New-VM -Generation 2 -MemoryStartupBytes $RAMGB -Name $VMnamestemp -SwitchName $HostSwitchName
                 Add-VMHardDiskDrive –ControllerType SCSI -ControllerNumber 0 -VMName $VMnamestemp -Path $VHDPath
@@ -165,17 +174,123 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
             }
 }
 
+############################################
+## Install and Configure Windows features ##
+############################################
+
 For ($i=0; $i -lt $VMnames.count; $i++) {
 
-#----- Convert index to variable for programatic ease
+# ----- Convert index to variable for programatic ease
     $VMnamestemp = $VMnames[$i]
     $DataVHDSizetemp = $VMDataVHDSize[$i]
     $RAMtemp = $VMRAM[$i]
     $CPUtemp = $VMCPUCount[$i]
-    $VMService = $VMFeature[$i]
+    $VMFeaturetemp = $VMFeature[$i]
+    $VMIPtemp = $VMIP[$i]
+    $VMIPSegment = $VMIP[$i]
+
+$VMPermIP = "$VMNetworkPortion" + "$VMIPSegment"
+$VMLocCred = New-Object System.Management.Automation.PSCredential -ArgumentList $VMLocalAdminName,$VMLocalAdminPassword
+$TempIP = Get-VM -Name $VMnamestemp | Select-Object -ExpandProperty NetworkAdapters | Select-Object IPAddresses
+
+# ----- Assign a Static IP
+Invoke-Command -ComputerName $TempIP -Credential $VMLocCred -Argumentlist $VMPermIP,$VMGateway,$VMNetPrefix -ScriptBlock {
+New-NetIPAddress -InterfaceAlias “Ethernet” -IPAddress $VMPermIP -PrefixLength $VMNetPrefix -DefaultGateway $VMGateway
+}
 
 if ($VMService = "AD-Domain-Services")
   {
+    Invoke-Command -ComputerName $VMPermIP -Credential $VMLocCred -Argumentlist $NewDomainName,$VMPermIP,$VMSubnet,$VMGateway,$SafeModeAdministratorPassword -ScriptBlock {
+    Install-WindowsFeature –Name AD-Domain-Services -IncludeManagementTools -Confirm:$False
+    Import-Module ADDSDeployment
+    Install-ADDSForest -CreateDnsDelegation:$false -DatabasePath "C:\Windows\NTDS" -DomainMode "Win2016" -DomainName "$NewDomainName" + ".com" -DomainNetbiosName "$NewDomainName" -ForestMode "Win2016" -InstallDns:$true -LogPath "C:\Windows\NTDS" -NoRebootOnCompletion:$false -SysvolPath "C:\Windows\SYSVOL" -Force:$true -SafeModeAdministratorPassword $SafeModeAdministratorPassword
+    }
+    # ----- Need to add connection logic for restart (Connecting & ensuring device is up)
+
+$DefaultAdminPassword = "Password" | ConvertTo-SecureString -AsPlainText -Force
+$DefaultUserPassword = "Password" | ConvertTo-SecureString -AsPlainText -Force
+    Import-Module ActiveDirectory
+<#
+Reference Structure
+    Sites
+      Kaczynski
+        Accounts
+          Admin
+            kdomad
+            kentad
+            hosad_kk
+            hosad_ck
+          Users
+            kactw
+            celie
+          Service
+            mailer
+
+        Devices
+          Servers
+            helio
+            wsus
+            file
+            wds
+          Hosts
+            laptopski
+            desktopski
+            laptopcelie
+      Zwalker
+      Pwalker
+#>
+
+# ----- Add OU structure
+    New-ADOrganizationalUnit -Name "Sites"
+      New-ADOrganizationalUnit -Name "Kaczynski" -Path "OU=SITES,DC=GHOWSTOWN,DC=COM"
+        New-ADOrganizationalUnit -Name "Accounts" -Path "OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+          New-ADOrganizationalUnit -Name "Admin" -Path "OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+          New-ADOrganizationalUnit -Name "Users" -Path "OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+          New-ADOrganizationalUnit -Name "Service" -Path "OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+
+        New-ADOrganizationalUnit -Name "Devices" -Path "OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+          New-ADOrganizationalUnit -Name "Servers" -Path "OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+          New-ADOrganizationalUnit -Name "Hosts" -Path "OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+
+# ----- Add Groups
+    New-ADGroup -Name "Kaczynski Users" -SamAccountName "KaczynskiUsers" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski Users" -Path "OU=USERS,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are Users at the Kaczynski site"
+    New-ADGroup -Name "Kaczynski LocalAdmin" -SamAccountName "KaczynskiLocAdmin" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski LocAdmin" -Path "OU=ADMIN,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are Local Computers Admins at the Kaczynski site"
+    New-ADGroup -Name "Kaczynski Hosts" -SamAccountName "KaczynskiHosts" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski Hosts" -Path "OU=HOSTS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are User Computers at the Kaczynski site"
+    New-ADGroup -Name "Kaczynski Servers" -SamAccountName "KaczynskiServers" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski Servers" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are Servers at the Kaczynski site"
+    New-ADGroup -Name "Kaczynski Physical" -SamAccountName "KaczynskiPhysical" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski Physical" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are Physical Servers at the Kaczynski site"
+    New-ADGroup -Name "Kaczynski Virtual" -SamAccountName "KaczynskiVirtual" -GroupCategory Security -GroupScope Global -DisplayName "Kaczynski Virtual" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -Description "Members of this group are Virtual Servers at the Kaczynski site"
+
+# ----- Add Users Accounts
+    New-ADUser -Name "Kaczynski DomainAdmin" -SamAccountName "kdomad" -AccountPassword $DefaultAdminPassword -Path "OU=ADMIN,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" "//file/admins/%USERNAME%"
+    New-ADUser -Name "Kaczynski EnterpriseAdmin" -SamAccountName "kentad" -AccountPassword $DefaultAdminPassword -Path "OU=ADMIN,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" "//file/admins/%USERNAME%"
+    New-ADUser -Name "Kaczynski TimLocalAdmin" -SamAccountName "khosad_kk" -AccountPassword $DefaultAdminPassword -Path "OU=ADMIN,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADUser -Name "Kaczynski CeciliaLocalAdmin" -SamAccountName "khosad_ck" -AccountPassword $DefaultAdminPassword -Path "OU=ADMIN,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADUser -Name "Timothy Kaczynski" -SamAccountName "kactw" -AccountPassword $DefaultUserPassword -Path "OU=USERS,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -HomeDirectory "//file/users/%USERNAME%"
+    New-ADUser -Name "Cecilia Brogdon" -SamAccountName "celie" -AccountPassword $DefaultUserPassword -Path "OU=USERS,OU=ACCOUNTS,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM" -HomeDirectory "//file/users/%USERNAME%"
+
+# ----- Add Users to Groups
+    Add-ADGroupMember -Identity "KaczynskiUsers" -Members kactw,celie
+    Add-ADGroupMember -Identity "KaczynskiLocAdmin" -Members khosad_kk,khosad_ck
+    Add-ADGroupMember -Identity "DomainAdministrators" -Members kdomad,kentad
+    Add-ADGroupMember -Identity "DomainAdministrators" -Members kentad
+
+# ----- Add Computer accounts
+    New-ADComputer -Name "helio" -SamAccountName "helio" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "wsus" -SamAccountName "wsus" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "file" -SamAccountName "file" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "wds" -SamAccountName "wds" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "laptopski" -SamAccountName "laptopski" -Path "OU=HOSTS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "desktopski" -SamAccountName "desktopski" -Path "OU=HOSTS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+    New-ADComputer -Name "laptopbro" -SamAccountName "laptopbro" -Path "OU=HOSTS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
+
+# ----- Add Computers to Groups
+    Add-ADGroupMember -Identity "KaczynskiServers" -Members addc,helio,wsus,file,wds
+    Add-ADGroupMember -Identity "KaczynskiPhysical" -Members "helio"
+    Add-ADGroupMember -Identity "KaczynskiVirtual" -Members addc,wsus,file,wds
+    Add-ADGroupMember -Identity "KaczynskiHosts" -Members kactw,celie
+
+# https://social.technet.microsoft.com/wiki/contents/articles/7833.how-to-make-a-domain-user-the-local-administrator-for-all-pcs.aspx ----- make a local user admin for hosts & servers
+# addc https://www.dell.com/support/article/ch/de/chdhs1/how10253/installing-active-directory-domain-services-and-promoting-the-server-to-a-domain-controller?lang=en or https://blogs.technet.microsoft.com/uktechnet/2016/06/08/setting-up-active-directory-via-powershell/ ----- install addc and forest
 
   }
 
@@ -186,7 +301,6 @@ if ($VMService = "UpdateServices")
 
 if ($VMService = "WDS")
   {
-    Invoke-Command
 
   }
 
@@ -236,7 +350,7 @@ AutoUnattend that works
         </component>
         <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <ComputerName>!ComputerName!</ComputerName>
-            <ProductKey>CB7KF-BWN84-R7R2Y-793K2-8XDDG</ProductKey>
+            <ProductKey>!productkey!</ProductKey>
             <RegisteredOrganization>!organization!</RegisteredOrganization>
             <RegisteredOwner>!organization!</RegisteredOwner>
         </component>
