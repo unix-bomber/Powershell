@@ -8,6 +8,8 @@
 
 ### References
 Pfts (powershell file transfer service) is an extension of the WinSCP FTP client. Versioning is available at https://github.com/unix-bomber/Powershell.git fts is heavily reliant on the PSService.ps1 JFLarvoire created. The most updated version of his code is at https://github.com/JFLarvoire/SysToolsLib/Powershell
+https://blogs.technet.microsoft.com/askperf/2014/08/11/wmi-high-memory-usage-by-wmi-service-or-wmiprvse-exe/ You may wish to increase the amount of WMI handlers. Too many WMI handlers open owing to McAfee or SCCM may crash the service
+
 
 ### Program Usage & Setup
 
