@@ -1,8 +1,8 @@
 #############################
 ## Hypervisor OS Variables ##
 #############################
-$HostName = “helio”
-$HostTimeZone = “Eastern Standard Time”
+$HostName = "helio"
+$HostTimeZone = "Eastern Standard Time"
 $HostOSpartitionsize = "80"
 $HostManagementIP = "192.168.0.7"
 $HostNetPrefix = "24"
@@ -10,9 +10,8 @@ $HostManagementGateway = "192.168.0.1"
 $HostDNS = "192.168.0.10"
 $HostProductKey = "" #Put a product key here, if you want to apply it
 $HostSwitchName = "HVSwitch"
-$HostVMMountPath = ”E:\VMStorage”
+$HostVMMountPath = "E:\VMStorage"
 $HostConfigure = $True #If true, apply the above settings install&configure hyper-v
-$AttachToExistingActiveDirectory = $True #If true, join to existing domain using credentials below. If False, don't join to domain
 
 #############################
 ## Existing AD Credentials ##
@@ -48,7 +47,7 @@ $VMNetworkPortion = "192.168.0."
 $VMIP = "8", "9", "10", "11"
 $VMNetPrefix = "24"
 $VMGateway = "192.168.0.1"
-$VMFeature = "AD-Domain-Services", "", "UpdateServices", "WDS"
+$VMFeature = "AD-Domain-Services", "FileServer", "UpdateServices", "WDS" #FileServer doesn't do any installation, only creates shared file structure
 
 # ----- Credentials & Ownership
 #Computer name is defined in 'VMnames'
@@ -85,7 +84,7 @@ if ($HostConfigure -eq "$True")
         # ----- Register product key
         if ($ProductKey.count -gt 1)
           {
-          Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:$ProductKey
+          Dism /online /Set-Edition:ServerDatacenter /AcceptEula /ProductKey:$HostProductKey
           }
         Install-WindowsFeature –Name Hyper-V -IncludeManagementTools -Confirm:$False
         # ----- Join AD domain
@@ -113,8 +112,9 @@ if ($HostConfigure -eq "$True")
             Set-Vmhost -VirtualHardDiskPath $HostVMMountPath -VirtualMachinePath $HostVMMountPath
             New-NetLbfoTeam -Name HVTeam -TeamMembers * -Confirm:$False -LoadBalancingAlgorithm HyperVPort -TeamingMode SwitchIndependent
             New-VMSwitch -Name $HostSwitchName -NetAdapterName HVTeam -AllowManagementOS $True -Confirm:$False
-            New-NetIPAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -IPAddress $HostManagementIP -PrefixLength $HostNetPrefix -DefaultGateway $HostManagementGateway
-            Set-DnsClientServerAddress -InterfaceAlias “vEthernet ($HostSwitchName)” -ServerAddresses $HostDNS
+            New-NetIPAddress -InterfaceAlias "vEthernet ($HostSwitchName)" -IPAddress $HostManagementIP -PrefixLength $HostNetPrefix -DefaultGateway $HostManagementGateway
+            Set-DnsClientServerAddress -InterfaceAlias "vEthernet ($HostSwitchName)" -ServerAddresses ($HostDNS,$ExternalDNS)
+            Disable-NetAdapterBinding "vEthernet ($HostSwitchName)" -ComponentID ms_tcpip6 -PassThru
             }
         }
 
@@ -136,8 +136,8 @@ For ($i=0; $i -lt $VMnames.count; $i++) {
     $CPUtemp = $VMCPUCount[$i]
 
 # ----- Name drives in a standard format
-    $VHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + ".vhdx")
-    $DataVHDPath = (“$HostVMMountPath" + "\" + $VMnamestemp + "_data.vhdx")
+    $VHDPath = ("$HostVMMountPath" + "\" + $VMnamestemp + ".vhdx")
+    $DataVHDPath = ("$HostVMMountPath" + "\" + $VMnamestemp + "_data.vhdx")
 
 # ----- Some quick math to convert from bytes to Gb
     $DataVHDSizeGB = $Bytes * $DataVHDSizetemp
@@ -194,11 +194,11 @@ $VMLocCred = New-Object System.Management.Automation.PSCredential -ArgumentList 
 $TempIP = Get-VM -Name $VMnamestemp | Select-Object -ExpandProperty NetworkAdapters | Select-Object IPAddresses
 
 # ----- Assign a Static IP
-Invoke-Command -ComputerName $TempIP -Credential $VMLocCred -Argumentlist $VMPermIP,$VMGateway,$VMNetPrefix -ScriptBlock {
-New-NetIPAddress -InterfaceAlias “Ethernet” -IPAddress $VMPermIP -PrefixLength $VMNetPrefix -DefaultGateway $VMGateway
+Invoke-Command -ComputerName $VMIPTemp -Credential $VMLocCred -Argumentlist $VMPermIP,$VMGateway,$VMNetPrefix -ScriptBlock {
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress $VMPermIP -PrefixLength $VMNetPrefix -DefaultGateway $VMGateway
 }
 
-if ($VMService = "AD-Domain-Services")
+if ($VMFeaturetemp = "AD-Domain-Services")
   {
     Invoke-Command -ComputerName $VMPermIP -Credential $VMLocCred -Argumentlist $NewDomainName,$VMPermIP,$VMSubnet,$VMGateway,$SafeModeAdministratorPassword -ScriptBlock {
     Install-WindowsFeature –Name AD-Domain-Services -IncludeManagementTools -Confirm:$False
@@ -272,7 +272,7 @@ Reference Structure
     Add-ADGroupMember -Identity "KaczynskiUsers" -Members kactw,celie
     Add-ADGroupMember -Identity "KaczynskiLocAdmin" -Members khosad_kk,khosad_ck
     Add-ADGroupMember -Identity "DomainAdministrators" -Members kdomad,kentad
-    Add-ADGroupMember -Identity "DomainAdministrators" -Members kentad
+    Add-ADGroupMember -Identity "EnterpriseAdministrators" -Members kentad
 
 # ----- Add Computer accounts
     New-ADComputer -Name "helio" -SamAccountName "helio" -Path "OU=SERVERS,OU=DEVICES,OU=KACZYNSKI,OU=SITES,DC=GHOWSTOWN,DC=COM"
@@ -294,6 +294,35 @@ Reference Structure
 
   }
 
+if ($VMService = "FileServer")
+  {
+    Invoke-Command -ComputerName $VMPermIP -Credential $VMLocCred -Argumentlist $NewDomainName,$VMPermIP,$VMSubnet,$VMGateway,$SafeModeAdministratorPassword -ScriptBlock {
+    New-Item -Name "users" -path "E:\" -ItemType "Directory"
+    New-Item -Name "admin" -path "E:\" -ItemType "Directory"
+    New-Item -Name "public" -path "E:\" -ItemType "Directory"
+    New-Item -Name "kactw" -path "E:\users" -ItemType "Directory"
+    New-Item -Name "celie" -path "E:\users" -ItemType "Directory"
+
+    # ----- pick up here
+    New-SMBShare –Name "users" –Path "E:\users" –ContinuouslyAvailable –FullAccess $NewDomainName\domainadmin,$NewDomainName\domainusers
+    $path = "E:\users\kactw","E:\users\celie" #Replace with whatever file you want to do this to.
+    $user = "$NewDomainName\kactw","$NewDomainName\celie" #User account to grant permisions too.
+    $Rights = "Full control" #Comma seperated list.
+    $InheritSettings = "Containerinherit, ObjectInherit" #Controls how permissions are inherited by children
+    $PropogationSettings = "None" #Usually set to none but can setup rules that only apply to children.
+    $RuleType = "Allow" #Allow or Deny.
+
+    For ($i=0; $i -lt $users.count; $i++) {
+
+      $acl = Get-Acl $path[$i]
+      $perm = $user[$i], $Rights, $InheritSettings, $PropogationSettings, $RuleType
+      $rule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $perm
+      $acl.SetAccessRule($rule)
+      $acl | Set-Acl -Path $path[$i]
+      }
+    }
+  }
+
 if ($VMService = "UpdateServices")
   {
 
@@ -301,10 +330,12 @@ if ($VMService = "UpdateServices")
 
 if ($VMService = "WDS")
   {
+  Invoke-Command -ComputerName $VMPermIP -Credential $VMLocCred -Argumentlist $NewDomainName,$VMPermIP,$VMSubnet,$VMGateway -ScriptBlock {
+  Install-WindowsFeature –Name WDS -IncludeManagementTools
 
   }
 
-
+}
 }
 
 #Hash for my first sysprepped image
@@ -405,6 +436,10 @@ AutoUnattend that works
     </settings>
     <cpi:offlineImage cpi:source="wim:q:/install.wim#Windows Server 2012 R2 SERVERSTANDARD" xmlns:cpi="urn:schemas-microsoft-com:cpi" />
 </unattend>
+
+#https://4sysops.com/archives/powershell-remoting-over-https-with-a-self-signed-ssl-certificate/
+#https://gist.github.com/Sauraus/6030714
+#References for autounattend and https psremoting
 
 else {
 #Join the domain & restart the host server

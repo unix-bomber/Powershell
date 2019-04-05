@@ -1,0 +1,86 @@
+###############################
+## Configuration Information ##
+###############################
+$MonEmailInterval = "120" #if files are older than 120 minutes email someone
+$MonRestartInterval ="60" #if activity flag is older than 60 minutes, set activity flag to inactive
+
+##############################
+##Rudimentary Alert settings##
+##############################
+$SMTPServer = "192.168.0.1"#IP address or hostname of mail server
+$SMTPPort = "25"#port to connect with
+$SMTPFrom = "me@gmail.com" #use the format x@domain
+$SMTPTo = "me@gmail.com", "you@gmail.com", "someone@gmail.com" #use the format x@domain
+$SMTPSubject = "File drop feed down"
+$SMTPPriority = "High" #use "High" "Medium" or "Low"
+
+###########################
+## Data feeds to monitor ##
+###########################
+$feedpath1 = "C:\whatever.txt"
+$feedpath2 = "C:\whatever.txt"
+$feedpath3 = "C:\whatever.txt"
+$feedpath4 = "C:\whatever.txt"
+$feedpaths = $feedpath1, $feedpath2, $feedpath3, $feedpath4
+
+######################
+## Files to monitor ##
+######################
+$activityflagpath1 = "C:\whatever.txt"
+$activityflagpath2 = "C:\whatever.txt"
+$activityflagpath3 = "C:\whatever.txt"
+$activityflagpath4 = "C:\whatever.txt"
+$flags = $activityflagpath1, $activityflagpath2, $activityflagpath3, $activityflagpath4
+
+########################################################################################
+##                              End of User settings                                  ##
+########################################################################################
+New-EventLog -LogName cdsfdmon -Source cdsfdmon -ea SilentlyContinue
+
+####################################
+## Check for age of activity flag ##
+####################################
+try {
+    $Flags | ForEach-Object {
+      $OldestFile = Get-ChildItem -Path $_
+      if ($OldestFile.LastWriteTime -lt $(Get-Date).AddMinutes(-$MonRestartInterval))
+        {
+          $content = Get-Content $_
+          if ($content -eq "active")
+            {
+            $path = $_
+            Set-Content -path $path -Value "inactive"
+            }
+        }
+    }
+}
+catch
+{
+Write-EventLog -LogName "cdsfdmon" -Source "cdsfdmon" -EventID 1001 -EntryType Information -Message "Error: File Checking Failed $($_.Exception.Message)" -Category 1 -RawData 10,20
+}
+
+####################################
+## write a keepalive to directory ##
+####################################
+
+try {
+  $feedpaths | ForEach-Object {
+  if (!(Get-ChildItem -Path $_/keepalive.jpg -ErrorAction SilentlyContinue))
+    {
+    New-Item -ItemType file -Path $_/keepalive.jpg
+    }
+    else
+      {
+      $OldestFile = Get-ChildItem -Path $_ | Sort-Object -Property LastWriteTime -Descending | select -First 1 | Where -Property Name -eq "keepalive.jpg" -ErrorAction SilentlyContinue
+      if ($OldestFile.LastWriteTime -lt $(Get-Date).AddMinutes(-$MonEmailInterval))
+        {
+        $feed = $_
+        Send-MailMessage -Port $SMTPPort -From $SMTPFrom -subject "cds $feed down" -To $SMTPTo -Priority $SMTPPriority -SmtpServer $SMTPServer -Body "Cross Domain $feed old data on server $env:Computername"
+        }
+      }
+  }
+}
+catch
+{
+Write-EventLog -LogName "cdsfdmon" -Source "cdsfdmon" -EventID 1003 -EntryType Information -Message "Error: File Checking Failed $($_.Exception.Message)" -Category 1 -RawData 10,20
+}

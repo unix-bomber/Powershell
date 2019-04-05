@@ -1,0 +1,7 @@
+$expire = Get-ChildItem -Path cert: -Recurse -ExpiringInDays 75
+$expireinfo = $expire.SyncRoot
+
+if ($expire.count -gt 1 )
+{
+Send-MailMessage -Port 25 -From somealert@dhs.gov -subject "$env:hostname cert expiring soon" -To someimportantperson@dhs.gov -Priority High -SmtpServer 192.168.0.email -Body "$env:Computername has a cert expiring in 75 days. Renew this cert. Information to follow - $expireinfo"
+}

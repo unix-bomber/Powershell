@@ -40,4 +40,4 @@ Catch {
 Write-EventLog -LogName "Application" -source "SwiftSafeShutdown" -EventId 1000 -EntryType Information -Message "Error: $($_.Exception.Message)" -Category 1 -RawData 10,20
 }
 
-Restart-Computer -Wait 1
+Restart-Computer -Wait 1 -Force
