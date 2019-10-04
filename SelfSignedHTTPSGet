@@ -39,7 +39,7 @@ $files = $r.Links |?{$_.href -match ".zip"}
 $files.href
 
 
-ForEach ($file in $files) {
+ForEach ($file in $files.href) {
     if ($file -ne "contentview.zip"){
         Invoke-WebRequest -Uri "https://192.168.0.125/pub/export/$file" -OutFile "C:\users\tkaczynski\desktop\$file"
     }
