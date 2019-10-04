@@ -30,4 +30,17 @@ $certCallback = @"
  }
 [ServerCertificateValidationCallback]::Ignore()
 
-Invoke-WebRequest -Uri "https://192.168.0.125/pub/bootstrap.py" -OutFile "C:\users\tkaczynski\desktop\bootstrap.py"
+#If you're manually running and know what you want to get
+#Invoke-WebRequest -Uri "https://192.168.0.125/pub/export/$file" -OutFile "C:\users\tkaczynski\desktop\$file"
+
+#If you want to list files, and collect them
+$r=iwr "https://192.168.0.125/pub/export/" -UseBasicParsing
+$files = $r.Links |?{$_.href -match ".zip"}
+$files.href
+
+
+ForEach ($file in $files) {
+    if ($file -ne "contentview.zip"){
+        Invoke-WebRequest -Uri "https://192.168.0.125/pub/export/$file" -OutFile "C:\users\tkaczynski\desktop\$file"
+    }
+}
