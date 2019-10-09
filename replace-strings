@@ -1,0 +1,5 @@
+#Replace !ComputerName! with what you want to change
+#Replace $VMNamesTemp with what you want to change !ComputerName! to
+
+$file = Get-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
+$file | Foreach-Object { $_ -replace '!ComputerName!', $VMNamesTemp } | Set-Content ("$MountedSysprepDrive" + ":\Windows\Panther\unattend.xml")
