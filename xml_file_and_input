@@ -1,0 +1,24 @@
+$file = "C:\Users\tkaczynski\Desktop\test.xml"
+
+# Remove old variable to ensure new instance
+Remove-Variable xml -ea SilentlyContinue
+
+# Create new empty xmldoc
+$xml = New-Object XML
+
+# Set preserve whitespace before load
+$xml.PreserveWhiteSpace = $false
+$xml.Load($file)
+
+#getting the aoi without problems
+$xmlchildnodes = $xml | Select-Object -ExpandProperty note
+$xmlchildnodes.body.count
+
+for ($i = 0; $i -lt $xmlchildnodes.body.count; $i++) {
+$bodyparts = $xmlchildnodes.body[$i].bod.trim()
+$person = $xmlchildnodes.from[$i].trim()
+foreach($body in $bodyparts) {
+New-Item -Path "$path\$body"
+Add-Content -Value $person[$i] -Path "$path\$body"
+}
+}
