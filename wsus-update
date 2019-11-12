@@ -1,0 +1,41 @@
+#Run from wsus
+#Get the Active Directory Server
+
+$adserver = $env:LOGONSERVER.substring(2)
+
+$ServiceAccount = "domain\service-account" #service account needs to be in remote group, access group
+$Password = ConvertTo-SecureString -string "password" -AsPlainText -force
+
+$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ServiceAccount, $Password
+
+#Import AD Module
+$S = New-PSSession -ComputerName $adserver -Credential $Credential
+$ComputerProperties = Invoke-Command $S -Scriptblock { Get-ADGroupmember -Identity "Domain Computers" }
+#Get All Computers to update
+$ComputerName = $ComputerProperties.Name
+
+#Force All Computers checkin
+invoke-command -computername $ComputerName -scriptblock {
+Start-Service wuauserv -Verbose
+$updateSession = new-object -com “Microsoft.Update.Session”;
+# More info about the Search method: https://docs.microsoft.com/en-us/windows/desktop/api/wuapi/nf-wuapi-iupdatesearcher-search
+$criteria = $null
+$updateSession.CreateupdateSearcher().Search($criteria) | out-null
+Write-host “Waiting 10 seconds for SyncUpdates webservice to complete to add to the wuauserv queue so that it can be reported on”
+Start-sleep -seconds 10
+Write-host “running wuauclt /reportnow …”
+wuauclt /reportnow
+}
+
+#Force Domain Controller checkin
+invoke-command -computername $adserver -scriptblock {
+Start-Service wuauserv -Verbose
+$updateSession = new-object -com “Microsoft.Update.Session”;
+# More info about the Search method: https://docs.microsoft.com/en-us/windows/desktop/api/wuapi/nf-wuapi-iupdatesearcher-search
+$criteria = $null
+$updateSession.CreateupdateSearcher().Search($criteria) | out-null
+Write-host “Waiting 10 seconds for SyncUpdates webservice to complete to add to the wuauserv queue so that it can be reported on”
+Start-sleep -seconds 10
+Write-host “running wuauclt /reportnow …”
+wuauclt /reportnow
+}
