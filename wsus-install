@@ -1,7 +1,10 @@
+#You either have to create a local task manager script to run C:\Scripts\installupdates.ps1 using powershell
+#OR using ansible. Some of the com classes can NOT be invoked remotely.
+
 $wsusserver = $env:Computername
 $adserver = $env:LOGONSERVER.substring(2)
 
-$ServiceAccount = "domain\svc-wsus" #service account needs to be in remote group, access group
+$ServiceAccount = "ghowstown\svc-wsus1" #service account needs to be in remote group, access group
 $Password = ConvertTo-SecureString -string "password" -AsPlainText -force
 
 $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ServiceAccount, $Password
@@ -14,91 +17,29 @@ $ComputerName = $ComputerProperties.Name
 
     foreach ($Computer in $Computername)
         {
-        if ($Computer -eq $wsusserver)
-            {
-            echo "Skipping $wsusserver so all of the other servers can update"
-            echo "Skipping $adserver to ensure the other servers can update"
-            }
-            else {
-                $S = New-PSSession -ComputerName $Computer -Credential $Credential
-                Invoke-Command $S -Scriptblock {
-                    #Define update criteria.
-                    $Criteria = "IsInstalled=0 and Type='Software'"
-                    #Search for relevant updates.
-                    $Searcher = New-Object -ComObject Microsoft.Update.Searcher
-                    $SearchResult = $Searcher.Search($Criteria).Updates
-
-                    #Download updates.
-                    $Session = New-Object -ComObject Microsoft.Update.Session
-                    $Downloader = $Session.CreateUpdateDownloader()
-                    $Downloader.Updates = $SearchResult
-                    $Downloader.Download()
-
-                    #Install updates.
-                    $Installer = New-Object -ComObject Microsoft.Update.Installer
-                    $Installer.Updates = $SearchResult
-                    $Result = $Installer.Install()
-
-                    #Reboot if required by updates.
-                        If ($Result.rebootRequired)
-                            {
-                            shutdown.exe /t 0 /r
-                            }
-                            start-sleep -seconds 50
-                    }
-                }
-            }
-
-$S = New-PSSession -ComputerName $adserver -Credential $Credential
-    Invoke-Command $S -Scriptblock {
-        #Define update criteria.
-        $Criteria = "IsInstalled=0 and Type='Software'"
-        #Search for relevant updates.
-        $Searcher = New-Object -ComObject Microsoft.Update.Searcher
-        $SearchResult = $Searcher.Search($Criteria).Updates
-
-        #Download updates.
-        $Session = New-Object -ComObject Microsoft.Update.Session
-        $Downloader = $Session.CreateUpdateDownloader()
-        $Downloader.Updates = $SearchResult
-        $Downloader.Download()
-
-        #Install updates.
-        $Installer = New-Object -ComObject Microsoft.Update.Installer
-        $Installer.Updates = $SearchResult
-        $Result = $Installer.Install()
-
-        #Reboot if required by updates.
-        If ($Result.rebootRequired)
-            {
-            shutdown.exe /t 0 /r
-            }
-            start-sleep -seconds 50
+                Invoke-Command -Computername $computer -Credential $Credential -Scriptblock {
+$update = @'
+#Define update criteria.
+$Criteria = "IsInstalled=0 and Type='Software'"
+#Search for relevant updates.
+$Searcher = New-Object -ComObject Microsoft.Update.Searcher
+$SearchResult = $Searcher.Search($Criteria).Updates
+$Session = New-Object -ComObject Microsoft.Update.Session
+$Downloader = $Session.CreateUpdateDownloader()
+$Downloader.Updates = $SearchResult
+$Downloader.Download()
+#Install updates.
+$Installer = New-Object -ComObject Microsoft.Update.Installer
+$Installer.Updates = $SearchResult
+$Result = $Installer.Install()
+#Reboot if required by updates.
+If ($Result.rebootRequired)
+    {
+    shutdown.exe /t 0 /r
     }
-
-$S = New-PSSession -ComputerName $wsusserver -Credential $Credential
-    Invoke-Command $S -Scriptblock {
-        #Define update criteria.
-        $Criteria = "IsInstalled=0 and Type='Software'"
-        #Search for relevant updates.
-        $Searcher = New-Object -ComObject Microsoft.Update.Searcher
-        $SearchResult = $Searcher.Search($Criteria).Updates
-
-        #Download updates.
-        $Session = New-Object -ComObject Microsoft.Update.Session
-        $Downloader = $Session.CreateUpdateDownloader()
-        $Downloader.Updates = $SearchResult
-        $Downloader.Download()
-
-        #Install updates.
-        $Installer = New-Object -ComObject Microsoft.Update.Installer
-        $Installer.Updates = $SearchResult
-        $Result = $Installer.Install()
-
-        #Reboot if required by updates.
-        If ($Result.rebootRequired)
-            {
-            shutdown.exe /t 0 /r
-            }
-            start-sleep -seconds 50
-    }
+}
+'@
+New-Item -Path C:\Scripts -ItemType directory
+Out-File -FilePath C:\Scripts\installupdates.ps1
+}
+}
