@@ -1,4 +1,4 @@
-﻿#Reference https://4sysops.com/archives/install-and-configure-an-ftp-server-with-powershell/
+#Reference https://4sysops.com/archives/install-and-configure-an-ftp-server-with-powershell/
 #This was done for a 2012R2 server specifically. There's probably better ways to do this now, but I don't know them.
 #!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!##!#!#!#!#!#
 #!#!#!#!#!#!#!#!#IF YOU ONLY HAVE A SINGLE VARIABLE, ENCLOSE IT LIKE THIS @('something')#!#!#!#!#!#!#!#!#
@@ -70,7 +70,7 @@ For ($i=0; $i -lt $FTPUserName.count; $i++) {
             $CreateUserFTPUser.SetInfo()
             $CreateUserFTPUser.SetPassword("$FTPPasswordTemp")
             $CreateUserFTPUser.SetInfo()
-            
+
             #Add user to group
             $UserAccount = New-Object System.Security.Principal.NTAccount("$FTPUserNameTemp")
             $SID = $UserAccount.Translate([System.Security.Principal.SecurityIdentifier])
@@ -87,11 +87,11 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
             {
 	        $FTPRootDirTemp = $FTPRootDir[$i]
 	        $FTPPortTemp = $FTPPort[$i]
-	        $FTPSiteNameTemp = $FTPSiteName[$i]            
+	        $FTPSiteNameTemp = $FTPSiteName[$i]
 
 	        New-Item -Path $FTPRootDirTemp -ItemType Directory
             New-WebFtpSite -Name $FTPSiteNameTemp -Port $FTPPortTemp -PhysicalPath $FTPRootDirTemp
-            
+
             #Configure Basic Authentication for site
             $FTPSitePath = "IIS:\Sites\$FTPSiteNameTemp"
 
@@ -106,14 +106,14 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
                         Value    = @{
                         accessType  = "Allow"
                         roles       = "$FTPUserGroupName"
-                        permissions = 1
+                        permissions = "1,2"
                         }
                     PSPath   = 'IIS:\'
                     Location = $FTPSiteNameTemp
                     }
                 }
                 Add-WebConfiguration @param
-                    
+
             #If you want to configure SSL policy from require to accept
             $SSLPolicy = @(
             'ftpServer.security.ssl.controlChannelPolicy',
@@ -132,9 +132,9 @@ For ($i=0; $i -lt $FTPSiteName.count; $i++) {
             #if ftpgroup doesn't have any permissions, give them modify permissions
             $accesscheck = Get-Acl -Path $FTPRootDirTemp
             $UserAccount = New-Object System.Security.Principal.NTAccount("$FTPUserGroupName")
-                if ($Accesscheck.AccessToString -inotlike "*$UserAccount*") 
+                if ($Accesscheck.AccessToString -inotlike "*$UserAccount*")
                     {
-                    if ($accesscheck.Group -notcontains $UserAccount) 
+                    if ($accesscheck.Group -notcontains $UserAccount)
                         {
                         $AccessRule = [System.Security.AccessControl.FileSystemAccessRule]::new($UserAccount,
                         'Modify',
