@@ -1,0 +1,1 @@
+choco install WhatEverSoftware -y --force --params "'ALLUSERS=1"
