@@ -1,0 +1,3 @@
+$conf=(get-wsusserver).GetConfiguration()
+$conf.BitsDownloadPriorityForeground=$true
+$conf.save()
